@@ -16,27 +16,29 @@ import csv
 import logging
 from logging import warning, debug, info
 from itertools import izip
-from collections import OrderedDict
+from collections import OrderedDict, namedtuple
 
 from Bio import SeqIO
 
 
-FN_SCHEME = "sample_{0:04}.fastq"
+FN_SCHEME = "{0.project}_{0.series}_sample_{0.id}.fastq"
 FN_UNKNOWN = "undetermined_{0}.fastq"
 CUT_LENGTH = 35
 
-logging.basicConfig(format='%(asctime)s %(levelname)s %(name)s %(message)s' , level=logging.INFO)
+#logging.basicConfig(format='%(asctime)s %(levelname)s %(name)s %(message)s' , level=logging.INFO)
+logging.basicConfig(format='%(asctime)s %(levelname)s %(name)s %(message)s' , level=logging.DEBUG)
 
 
-def main(bc_index_file, sample_sheet, fastq_file_list, stats_file, outdir, min_bc_quality):
+def main(bc_index_file, sample_sheet, input_files, stats_file, output_dir, min_bc_quality):
     """ this is the main function of this module. Does the splitting 
         and calls any other function.
+        fastq_file_list is delimited by newlines, because config parser has no list functionality
     """
     bc_dict = create_bc_dict(bc_index_file)
     sample_dict, sample_counter = create_sample_dict(sample_sheet)
-    files_dict = create_output_files(sample_dict, outdir)
+    files_dict = create_output_files(sample_dict, output_dir)
 
-    for fastq_file in fastq_file_list:
+    for fastq_file in input_files:
         r1_file = fastq_file
         r2_file = fastq_file.replace("_R1_", "_R2_")
 
@@ -53,23 +55,18 @@ def main(bc_index_file, sample_sheet, fastq_file_list, stats_file, outdir, min_b
         for sample_id, sample_count in sample_counter.items():
             stats += ["{0}\t{1}\t{2}\n".format(sample_id, sample_count, 100.0*sample_count/total)]
         stats += ["total\t{0}\t100\n".format(total)]
-        with open(os.path.join(outdir,stats_file), "w") as stat_fh:
+        with open(os.path.join(output_dir,stats_file), "w") as stat_fh:
             stat_fh.writelines(stats)
     
     for file in files_dict.values():
         file.close()
 
 def create_output_files(sample_dict, target):
-    try:
-        os.makedirs(target)
-    except OSError:
-        # directory already exists..
-        pass
 
     files_dict = dict()
-    for sample_id in set(sample_dict.values()):
-        filename = os.path.join(target, FN_SCHEME.format(int(sample_id)))
-        files_dict[sample_id] = open(filename,"wb")
+    for sample in set(sample_dict.values()):
+        filename = os.path.join(target, FN_SCHEME.format(sample))
+        files_dict[sample.id] = open(filename,"wb")
     filename = os.path.join(target, FN_UNKNOWN.format('R1'))
     files_dict['unknown_bc_R1'] = open(filename, "wb")
     filename = os.path.join(target, FN_UNKNOWN.format('R2'))
@@ -79,18 +76,14 @@ def create_output_files(sample_dict, target):
 def create_sample_dict(sample_sheet_file):
     sample_dict = OrderedDict()
     sample_counter = OrderedDict()
+    Key = namedtuple('sample_key',['flocell', 'lane', 'il_barcode', 'cel_barcode'])
+    Sample_info = namedtuple('Sample', ['id', 'series', 'project'])
     with open(sample_sheet_file, 'rb') as sample_sheet_fh:
-        sample_sheet_reader = csv.reader(sample_sheet_fh, delimiter='\t')
+        sample_sheet_reader = csv.DictReader(sample_sheet_fh, delimiter='\t')
         for row in sample_sheet_reader:
-            if row[0].startswith("#"):
-                continue
-            id = row[0]
-            lane = row[3]
-            il_barcode = row[4]
-            cel_barcode = row[5]
-            
-            key = (lane, il_barcode, cel_barcode)
-            sample_dict[key] = id
+            id = "{0:04}".format(int(row["#id"]))  #  id has an extra "#" becaues its the first field
+            key = Key(row["flocell"], row["lane"], row["il_barcode"], row["cel_barcode"])
+            sample_dict[key] = Sample_info(id, row["series"], row["project"])
             sample_counter[id] = 0
     sample_counter['undetermined'] = 0
     sample_counter['unqualified'] = 0
@@ -115,19 +108,22 @@ def bc_split(bc_dict, sample_dict, sample_counter, files_dict, min_bc_quality, l
         if (n % 1e5)==0:
             info("read number {0}".format(n))
         # validate reads are the same
+        #debug("read : {}".format(read1))
         assert (read1.id == read2.id), "Reads have different ids. Aborting."
         # check quality:
         quals = read1.letter_annotations['phred_quality'][0:8]
-        if min(quals) >= min_bc_quality:
+        if min(quals) >= int(min_bc_quality):
             # find and split
             barcode = str(read1.seq[0:8])
             cel_bc_id = bc_dict.get(barcode, None)
-            sample_id = sample_dict.get((lane, il_barcode, cel_bc_id),None)
+            flocell = read1.id.split(":")[2]
+            sample = sample_dict.get((flocell, lane, il_barcode, cel_bc_id),None)
             debug("cel-seq barcode id = {0}".format(cel_bc_id))
-            if (cel_bc_id is not None) and (sample_id is not None):
-                fh = files_dict[sample_id]
+            debug("sample is {0}".format(sample))
+            if (cel_bc_id is not None) and (sample is not None):
+                fh = files_dict[sample.id]
                 SeqIO.write([read2[:CUT_LENGTH]], fh, "fastq-sanger")
-                sample_counter[sample_id] += 1
+                sample_counter[sample.id] += 1
             else:
                 fh1 = files_dict['unknown_bc_R1']
                 fh2 = files_dict['unknown_bc_R2']
@@ -152,8 +148,4 @@ if __name__ == "__main__":
     args = parser.parse_args()
     main(args.bc_index, args.sample_sheet, args.fastq_files, stats_file=args.stats_file,
          outdir=args.out_dir, min_bc_quality=args.min_bc_quality)
-
-## add as param later
-MIN_QUAL = 10
-OUT_DIR = None
 
