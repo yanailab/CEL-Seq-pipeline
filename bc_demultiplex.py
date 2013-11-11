@@ -4,20 +4,20 @@
 Splits one fastq file based on barcodes from another file. The script 
 accepts one barcode index file, one sample sheet, and a set of fastq files.
 The fastq files are assumed to be read1 (the barcode), and the script replaces
-"_R1_" with "_R2_" to find the second file. 
+"_R1_" with "_R2_" to find the second file. If the filename ends in `gz` it
+is decompressed on-the-fly (HTSeq does that).
 
 """
 
 from __future__ import print_function, division
 
-import os, os.path
+import os
 import argparse
 import csv
 from logging import getLogger
 from itertools import izip
-from collections import OrderedDict, namedtuple
+from collections import OrderedDict, namedtuple, Counter
 
-from Bio import SeqIO
 from HTSeq import FastqReader
 
 FN_SCHEME = "{0.project}_{0.series}_sample_{0.id}.fastq"
@@ -34,38 +34,44 @@ def main(bc_index_file, sample_sheet, input_files, stats_file, output_dir, min_b
         fastq_file_list is delimited by newlines, because config parser has no list functionality
     """
     bc_dict = create_bc_dict(bc_index_file)
-    sample_dict, sample_counter = create_sample_dict(sample_sheet)
+    sample_dict = create_sample_dict(sample_sheet)
     files_dict = create_output_files(sample_dict, output_dir)
-
-    for fastq_file in input_files:
-        r1_file = fastq_file
-        r2_file = fastq_file.replace("_R1_", "_R2_")
-
-        # derive lane and il_barcode from filename
-        split_name = os.path.basename(fastq_file).split("_")
-        il_barcode = split_name[0]
-        lane = split_name[2]
-
-        bc_split(bc_dict, sample_dict, sample_counter, files_dict, min_bc_quality, lane, il_barcode, r1_file, r2_file)
-
+    try:
+        sample_counter = Counter()
+    
+        for fastq_file in input_files:
+            r1_file = fastq_file
+            r2_file = fastq_file.replace("_R1_", "_R2_")
+        
+            # derive lane and il_barcode from filename
+            split_name = os.path.basename(fastq_file).split("_")
+            il_barcode = split_name[0]
+            lane = split_name[2]
+    
+            # run the splitter on this file, and collect the counts
+            sample_counter += bc_split(bc_dict, sample_dict, files_dict, min_bc_quality, lane, il_barcode, r1_file, r2_file)
+    
         total = sum(sample_counter.values())
         stats = ["# Sample_id\treads\tprecentage\n"]
-
-        for sample_id, sample_count in sample_counter.items():
-            stats += ["{0}\t{1}\t{2}\n".format(sample_id, sample_count, 100.0*sample_count/total)]
+    
+        for sample in sample_dict.values():
+            sample_count = sample_counter[sample]
+            stats += [(FN_SCHEME + "\t{1}\t{2}\n").format(sample, sample_count, 100.0*sample_count/total)]
+        stats += ["unqualified\t{}\t{}\n".format(sample_counter['unqualified'], 100.0*sample_counter['unqualified']/total)]
+        stats += ["undetermined\t{}\t{}\n".format(sample_counter['undetermined'], 100.0*sample_counter['undetermined']/total)]
         stats += ["total\t{0}\t100\n".format(total)]
         with open(os.path.join(output_dir,stats_file), "w") as stat_fh:
             stat_fh.writelines(stats)
-    
-    for file in files_dict.values():
-        file.close()
+    finally:        
+        for file in files_dict.values():
+            file.close()
 
 def create_output_files(sample_dict, target):
 
     files_dict = dict()
     for sample in set(sample_dict.values()):
         filename = os.path.join(target, FN_SCHEME.format(sample))
-        files_dict[sample.id] = open(filename,"wb")
+        files_dict[sample] = open(filename,"wb")
     filename = os.path.join(target, FN_UNKNOWN.format('R1'))
     files_dict['unknown_bc_R1'] = open(filename, "wb")
     filename = os.path.join(target, FN_UNKNOWN.format('R2'))
@@ -73,23 +79,23 @@ def create_output_files(sample_dict, target):
     return files_dict
     
 def create_sample_dict(sample_sheet_file):
+    """  Create a mapping from sample keys to sample infos """
     sample_dict = OrderedDict()
-    sample_counter = OrderedDict()
+    # define the "data types"
     Key = namedtuple('sample_key',['flocell', 'lane', 'il_barcode', 'cel_barcode'])
     Sample_info = namedtuple('Sample', ['id', 'series', 'project'])
+
     with open(sample_sheet_file, 'rb') as sample_sheet_fh:
         sample_sheet_reader = csv.DictReader(sample_sheet_fh, delimiter='\t')
         for row in sample_sheet_reader:
             id = "{0:04}".format(int(row["#id"]))  #  id has an extra "#" becaues its the first field
             key = Key(row["flocell"], row["lane"], row["il_barcode"], row["cel_barcode"])
             sample_dict[key] = Sample_info(id, row["series"], row["project"])
-            sample_counter[id] = 0
-    sample_counter['undetermined'] = 0
-    sample_counter['unqualified'] = 0
-    return sample_dict, sample_counter
-                                  
+
+    return sample_dict                              
 
 def create_bc_dict(bc_index_file):
+    """ create a mapping from barcode sequence to barcode id """
     bc_dict = dict()
     with open(bc_index_file, 'rb') as bc_index:
         bc_index_reader = csv.reader(bc_index, delimiter='\t')
@@ -99,17 +105,15 @@ def create_bc_dict(bc_index_file):
             bc_dict[row[1]] = row[0]
     return bc_dict
 
-def bc_split(bc_dict, sample_dict, sample_counter, files_dict, min_bc_quality, lane, il_barcode, r1_file, r2_file):
+def bc_split(bc_dict, sample_dict, files_dict, min_bc_quality, lane, il_barcode, r1_file, r2_file):
     """ Splits two fastq files according to barcode """
-    #r1 = SeqIO.parse(r1_file, "fastq-sanger")
-    #r2 = SeqIO.parse(r2_file, "fastq-sanger")
+    sample_counter = Counter()
     r1 = FastqReader(r1_file)
     r2 = FastqReader(r2_file)
     for n, (read1, read2) in enumerate(izip(r1,r2)):
         if (n % 1e5)==0:
-            info("read number {0}".format(n))
+            debug("read number {0}".format(n))
         # validate reads are the same
-        #debug("read : {}".format(read1))
         assert (read1.name.split()[0] == read2.name.split()[0]), "Reads have different ids. Aborting."
         # check quality:
         quals = read1.qual[0:8]
@@ -118,13 +122,12 @@ def bc_split(bc_dict, sample_dict, sample_counter, files_dict, min_bc_quality, l
             barcode = str(read1.seq[0:8])
             cel_bc_id = bc_dict.get(barcode, None)
             flocell = read1.name.split(":")[2]
-            sample = sample_dict.get((flocell, lane, il_barcode, cel_bc_id),None)
-            #debug("cel-seq barcode id = {0}".format(cel_bc_id))
-            #debug("sample is {0}".format(sample))
+            key = (flocell, lane, il_barcode, cel_bc_id)
+            sample = sample_dict.get(key ,None)
             if (cel_bc_id is not None) and (sample is not None):
-                fh = files_dict[sample.id]
+                fh = files_dict[sample]
                 (read2[:CUT_LENGTH]).write_to_fastq_file(fh)
-                sample_counter[sample.id] += 1
+                sample_counter[sample] += 1
             else:
                 fh1 = files_dict['unknown_bc_R1']
                 fh2 = files_dict['unknown_bc_R2']
@@ -136,7 +139,7 @@ def bc_split(bc_dict, sample_dict, sample_counter, files_dict, min_bc_quality, l
     return sample_counter
                 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(description= __doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument('--min-bc-quality', metavar='N', type=int, default=10, 
                         help='Minimal quality for barcode reads (default=10)')
     parser.add_argument('--out-dir', metavar='DIRNAME', type=str, default='.',
