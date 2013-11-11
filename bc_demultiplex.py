@@ -13,21 +13,20 @@ from __future__ import print_function, division
 import os, os.path
 import argparse
 import csv
-import logging
-from logging import warning, debug, info
+from logging import getLogger
 from itertools import izip
 from collections import OrderedDict, namedtuple
 
 from Bio import SeqIO
-
+from HTSeq import FastqReader
 
 FN_SCHEME = "{0.project}_{0.series}_sample_{0.id}.fastq"
 FN_UNKNOWN = "undetermined_{0}.fastq"
 CUT_LENGTH = 35
 
-#logging.basicConfig(format='%(asctime)s %(levelname)s %(name)s %(message)s' , level=logging.INFO)
-logging.basicConfig(format='%(asctime)s %(levelname)s %(name)s %(message)s' , level=logging.DEBUG)
 
+logger = getLogger('pijp.bc_demultiplex')
+debug, info = logger.debug, logger.info
 
 def main(bc_index_file, sample_sheet, input_files, stats_file, output_dir, min_bc_quality):
     """ this is the main function of this module. Does the splitting 
@@ -102,33 +101,35 @@ def create_bc_dict(bc_index_file):
 
 def bc_split(bc_dict, sample_dict, sample_counter, files_dict, min_bc_quality, lane, il_barcode, r1_file, r2_file):
     """ Splits two fastq files according to barcode """
-    r1 = SeqIO.parse(r1_file, "fastq-sanger")
-    r2 = SeqIO.parse(r2_file, "fastq-sanger")
+    #r1 = SeqIO.parse(r1_file, "fastq-sanger")
+    #r2 = SeqIO.parse(r2_file, "fastq-sanger")
+    r1 = FastqReader(r1_file)
+    r2 = FastqReader(r2_file)
     for n, (read1, read2) in enumerate(izip(r1,r2)):
         if (n % 1e5)==0:
             info("read number {0}".format(n))
         # validate reads are the same
         #debug("read : {}".format(read1))
-        assert (read1.id == read2.id), "Reads have different ids. Aborting."
+        assert (read1.name.split()[0] == read2.name.split()[0]), "Reads have different ids. Aborting."
         # check quality:
-        quals = read1.letter_annotations['phred_quality'][0:8]
+        quals = read1.qual[0:8]
         if min(quals) >= int(min_bc_quality):
             # find and split
             barcode = str(read1.seq[0:8])
             cel_bc_id = bc_dict.get(barcode, None)
-            flocell = read1.id.split(":")[2]
+            flocell = read1.name.split(":")[2]
             sample = sample_dict.get((flocell, lane, il_barcode, cel_bc_id),None)
-            debug("cel-seq barcode id = {0}".format(cel_bc_id))
-            debug("sample is {0}".format(sample))
+            #debug("cel-seq barcode id = {0}".format(cel_bc_id))
+            #debug("sample is {0}".format(sample))
             if (cel_bc_id is not None) and (sample is not None):
                 fh = files_dict[sample.id]
-                SeqIO.write([read2[:CUT_LENGTH]], fh, "fastq-sanger")
+                (read2[:CUT_LENGTH]).write_to_fastq_file(fh)
                 sample_counter[sample.id] += 1
             else:
                 fh1 = files_dict['unknown_bc_R1']
                 fh2 = files_dict['unknown_bc_R2']
-                SeqIO.write([read1], fh1, "fastq-sanger")
-                SeqIO.write([read2[:CUT_LENGTH]], fh2, "fastq-sanger")
+                (read1).write_to_fastq_file( fh1)
+                (read2[:CUT_LENGTH]).write_to_fastq_file( fh2)
                 sample_counter['undetermined'] += 1
         else:
             sample_counter['unqualified'] +=1
@@ -147,5 +148,5 @@ if __name__ == "__main__":
     parser.add_argument('fastq_files', type=str, nargs='+')
     args = parser.parse_args()
     main(args.bc_index, args.sample_sheet, args.fastq_files, stats_file=args.stats_file,
-         outdir=args.out_dir, min_bc_quality=args.min_bc_quality)
+         output_dir=args.out_dir, min_bc_quality=args.min_bc_quality)
 

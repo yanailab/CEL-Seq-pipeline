@@ -3,13 +3,13 @@
 """
 
 import subprocess
-import logging
+from logging import getLogger
 import os
 import shlex
 import argparse
 from glob import glob
 
-logging.basicConfig(format='%(asctime)s %(levelname)s %(name)s %(message)s' , level=logging.INFO)
+logger = getLogger('pijp.bowtie_wrapper')
 
 def build_bowtie_command(fastq_file,  index_file, number_of_threads, output_dir, extra_params):
 
@@ -28,7 +28,7 @@ def main(input_files, index_file, number_of_threads, output_dir, extra_params):
     for fastq_file in input_files:
         bt2_cmd = build_bowtie_command(fastq_file, index_file, number_of_threads, output_dir, extra_params)
     
-        logging.info("ran  :" + bt2_cmd)
+        logger.info("ran  :" + bt2_cmd)
         subprocess.check_call(bt2_cmd, shell=True)
     
 

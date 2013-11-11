@@ -1,5 +1,5 @@
 #!/usr/bin/python2
-""" pijpleiding.py  :  pipeliner for the cel-seq protocol
+""" pijpleiding.py  :  pipeliner for yanailab 
 
 This pipeline accepts one argument only: a configuration file.
 Each section in the configuration file is related to a different step in the
@@ -25,7 +25,7 @@ import ConfigParser
 import argparse
 from glob import glob
 import os
-from logging import getLogger
+import logging
 
 import bowtie_wrapper, bc_demultiplex, htseq_wrapper
 
@@ -33,7 +33,10 @@ import bowtie_wrapper, bc_demultiplex, htseq_wrapper
 SECTIONS = ( "bc_demultiplex", "bowtie_wrapper", "htseq_wrapper")
 SEGMENTS = ( bc_demultiplex.main, bowtie_wrapper.main, htseq_wrapper.main)
 
-logger = getLogger('pijp')
+LOGFORMAT = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+logger = logging.getLogger('pijp')
+logging.basicConfig(level=logging.INFO, format = LOGFORMAT)
+log_formatter = logging.Formatter(LOGFORMAT)
 
 def main(config_file):
     
@@ -53,17 +56,30 @@ def main(config_file):
                 parameters["input_files"] += gl
 
             parameters["input_files"].sort()
+
+            # create the output directory if nonexistant
             try:
                 os.makedirs(parameters['output_dir'])
             except OSError:
                 # directory already exists..
                 pass
+
+            # add a log file in the output dir
+            log_fname = os.path.join(parameters['output_dir'], "pijp.log")
+            hdlr = logging.FileHandler(log_fname)
+            hdlr.setFormatter(log_formatter)
+            logger.addHandler(hdlr)
             
+            logger.info("========== writing log to file at %s ==========", log_fname)
+            # run the command
             segment(**parameters)
+
+            # remove the log file handler:
+            logger.removeHandler(hdlr)
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(description= __doc__, formatter_class=argparse.RawDescriptionHelpFormatter,)
     parser.add_argument('config_file', type=str)
     args = parser.parse_args()
     main(args.config_file)
