@@ -26,6 +26,7 @@ import argparse
 from glob import glob
 import os
 import logging
+import json
 
 import bowtie_wrapper, bc_demultiplex, htseq_wrapper
 
@@ -43,6 +44,7 @@ def main(config_file):
     config = ConfigParser.ConfigParser()
     config.read(config_file)
 
+    logger.info("===== Started pijpleiding with config file : %s", config_file)
     
     for section, segment in zip(SECTIONS, SEGMENTS):
 
@@ -71,12 +73,16 @@ def main(config_file):
             logger.addHandler(hdlr)
             
             logger.info("========== writing log to file at %s ==========", log_fname)
+            logger.info("Section : %s",section)
+            logger.info("parameters : %s", json.dumps(parameters))
             # run the command
             segment(**parameters)
 
             # remove the log file handler:
             logger.removeHandler(hdlr)
 
+
+    logger.info("===== Successfuly finished pijpleiding")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description= __doc__, formatter_class=argparse.RawDescriptionHelpFormatter,)

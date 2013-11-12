@@ -31,8 +31,8 @@ debug, info = logger.debug, logger.info
 def main(bc_index_file, sample_sheet, input_files, stats_file, output_dir, min_bc_quality):
     """ this is the main function of this module. Does the splitting 
         and calls any other function.
-        fastq_file_list is delimited by newlines, because config parser has no list functionality
     """
+
     bc_dict = create_bc_dict(bc_index_file)
     sample_dict = create_sample_dict(sample_sheet)
     files_dict = create_output_files(sample_dict, output_dir)
@@ -40,6 +40,7 @@ def main(bc_index_file, sample_sheet, input_files, stats_file, output_dir, min_b
         sample_counter = Counter()
     
         for fastq_file in input_files:
+            logger.info("splitting file %s", fastq_file)
             r1_file = fastq_file
             r2_file = fastq_file.replace("_R1_", "_R2_")
         
@@ -51,17 +52,23 @@ def main(bc_index_file, sample_sheet, input_files, stats_file, output_dir, min_b
             # run the splitter on this file, and collect the counts
             sample_counter += bc_split(bc_dict, sample_dict, files_dict, min_bc_quality, lane, il_barcode, r1_file, r2_file)
     
+        ### Create the stats file.
         total = sum(sample_counter.values())
-        stats = ["# Sample_id\treads\tprecentage\n"]
-    
-        for sample in sample_dict.values():
+        stats = [["# Sample_id", "reads", "precentage"]]
+        
+        # a sample can appear more than once in the sample dict,
+        # but we do not want to use set as it is unordered. 
+        samples = OrderedDict(((x, True) for x in sample_dict.values()))
+        
+        for sample in samples.keys():
             sample_count = sample_counter[sample]
-            stats += [(FN_SCHEME + "\t{1}\t{2}\n").format(sample, sample_count, 100.0*sample_count/total)]
-        stats += ["unqualified\t{}\t{}\n".format(sample_counter['unqualified'], 100.0*sample_counter['unqualified']/total)]
-        stats += ["undetermined\t{}\t{}\n".format(sample_counter['undetermined'], 100.0*sample_counter['undetermined']/total)]
-        stats += ["total\t{0}\t100\n".format(total)]
-        with open(os.path.join(output_dir,stats_file), "w") as stat_fh:
-            stat_fh.writelines(stats)
+            stats.append( [FN_SCHEME.format(sample), sample_count, 100.0*sample_count/total])
+        stats.append( ["unqualified", sample_counter['unqualified'], 100.0*sample_counter['unqualified']/total])
+        stats.append( ["undetermined", sample_counter['undetermined'], 100.0*sample_counter['undetermined']/total])
+        stats.append( ["total", total, 100])
+        with open(os.path.join(output_dir,stats_file), "w") as stats_fh:
+            stats_writer = csv.writer(stats_fh, delimiter='\t')
+            stats_writer.writerows(stats)
     finally:        
         for file in files_dict.values():
             file.close()
@@ -106,7 +113,7 @@ def create_bc_dict(bc_index_file):
     return bc_dict
 
 def bc_split(bc_dict, sample_dict, files_dict, min_bc_quality, lane, il_barcode, r1_file, r2_file):
-    """ Splits two fastq files according to barcode """
+    """ Splits a pair of fastq files according to barcode """
     sample_counter = Counter()
     r1 = FastqReader(r1_file)
     r2 = FastqReader(r2_file)
