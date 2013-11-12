@@ -28,15 +28,6 @@ def main(input_files, index_file, number_of_threads, output_dir, extra_params):
     for fastq_file in input_files:
         bt2_cmd = build_bowtie_command(fastq_file, index_file, number_of_threads, output_dir, extra_params)
     
-        logger.info("ran  :" + bt2_cmd)
+        logger.info("ran : " + bt2_cmd)
         subprocess.check_call(bt2_cmd, shell=True)
     
-
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument('paramfile', type=str)
-    parser.add_argument('--output-dir', type=str, default=".")
-    parser.add_argument('fastqfile', type=str, nargs="+")
-    args = parser.parse_args()
-    main(args.fastqfile, args.paramfile, args.output_dir) 
-
