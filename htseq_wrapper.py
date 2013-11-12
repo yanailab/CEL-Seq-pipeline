@@ -10,12 +10,16 @@ from logging import getLogger
 import shlex
 import os.path
 import csv
+from itertools import cycle
 
 logger = getLogger("pijp.htseq")
 
 def main(input_files, gff_file, output_dir, extra_params, count_filename):
 
-    htout = []
+    # The first col we need only once, as it is always the same.
+    # So we put None, and try to write it on our first chance.
+    ht_col1 = None
+    ht_col2 = []
     base_names = []
     for sam_file in input_files:
 
@@ -25,19 +29,25 @@ def main(input_files, gff_file, output_dir, extra_params, count_filename):
         htseq_cmd =  ["htseq-count"] + shlex.split(extra_params) + [ sam_file, gff_file]
         logger.info("ran  : " + " ".join( htseq_cmd))
         try:
-            htout += [subprocess.check_output(htseq_cmd).splitlines()]
+            stdout = subprocess.check_output(htseq_cmd).splitlines()
+            htout = (x.split('\t') for x in  stdout)
+            htout1, htout2 = zip(*htout)
+            if ht_col1 is None:
+                ht_col1 = htout1
+            ht_col2.append(htout2)
         except subprocess.CalledProcessError:
             if os.stat(sam_file).st_size == 0:
                 logger.error(" Empty sam file : %s ", sam_file)
+                # for an empty sam file, we want a lot of zeros..
+                ht_col2.append(cycle("0"))
             else:
-                raise
+                raise  # some other error we don't know about.
     
-    matrix = [["#Sample:"]+base_names]
-    for pairs in zip(*htout):
-        first_col = pairs[0].split('\t')[0]  # first half of first pair
-        second_halves = [pair.split('\t')[1] for pair in pairs]
-        matrix += [[first_col] + second_halves] 
+    matrix_header = ["#Sample:"] + base_names
+
+    matrix = zip( ht_col1, *ht_col2)
     with open(os.path.join(output_dir, count_filename), "w") as fh:
         matwriter = csv.writer(fh, delimiter='\t')
+        matwriter.writerow(matrix_header)
         matwriter.writerows(matrix)
         
