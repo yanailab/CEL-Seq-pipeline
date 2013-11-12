@@ -28,11 +28,11 @@ import os
 import logging
 import json
 
-import bowtie_wrapper, bc_demultiplex, htseq_wrapper
+import bowtie_wrapper, bc_demultiplex, htseq_wrapper, clean_up
 
 
-SECTIONS = ( "bc_demultiplex", "bowtie_wrapper", "htseq_wrapper")
-SEGMENTS = ( bc_demultiplex.main, bowtie_wrapper.main, htseq_wrapper.main)
+SECTIONS = ( "bc_demultiplex", "bowtie_wrapper", "htseq_wrapper", "clean_up")
+SEGMENTS = ( bc_demultiplex.main, bowtie_wrapper.main, htseq_wrapper.main, clean_up.main)
 
 LOGFORMAT = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 logger = logging.getLogger('pijp')
