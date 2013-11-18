@@ -64,7 +64,12 @@ def main(config_file):
                 os.makedirs(parameters['output_dir'])
             except OSError:
                 # directory already exists..
-                pass
+                if len(os.listdir(parameters['output_dir'])) != 0:
+                    ans = None
+                    while ans not in ["y", "n"]:
+                        ans = raw_input("Writing to a non-empty directory. Files may be overwritten. Are you sure? [y/n] : ")
+                    if ans == "n":
+                        exit(1)
 
             # add a log file in the output dir
             log_fname = os.path.join(parameters['output_dir'], "pijp.log")
