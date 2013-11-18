@@ -78,6 +78,7 @@ def main(config_file):
             # run the command
             segment(**parameters)
 
+            logger.info("===== closing log")
             # remove the log file handler:
             logger.removeHandler(hdlr)
 

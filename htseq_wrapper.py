@@ -21,6 +21,7 @@ def main(input_files, gff_file, output_dir, extra_params, count_filename):
     ht_col1 = None
     ht_col2 = []
     base_names = []
+    processes = []
     for sam_file in input_files:
 
         #  we need base_names for heading the matrix file.
@@ -28,14 +29,17 @@ def main(input_files, gff_file, output_dir, extra_params, count_filename):
 
         htseq_cmd =  ["htseq-count"] + shlex.split(extra_params) + [ sam_file, gff_file]
         logger.info("ran  : " + " ".join( htseq_cmd))
-        try:
-            stdout = subprocess.check_output(htseq_cmd).splitlines()
-            htout = (x.split('\t') for x in  stdout)
+        processes.append( subprocess.Popen((htseq_cmd), stdout=subprocess.PIPE, stderr=subprocess.PIPE))
+
+    for pro in processes:
+        (stdout, stderr) = pro.communicate()
+        if pro.returncode == 0:
+            htout = (x.split('\t') for x in  stdout.splitlines())
             htout1, htout2 = zip(*htout)
             if ht_col1 is None:
                 ht_col1 = htout1
             ht_col2.append(htout2)
-        except subprocess.CalledProcessError:
+        else:
             if os.stat(sam_file).st_size == 0:
                 logger.error(" Empty sam file : %s ", sam_file)
                 # for an empty sam file, we want a lot of zeros..
