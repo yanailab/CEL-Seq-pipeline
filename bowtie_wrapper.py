@@ -26,22 +26,22 @@ def main(input_files, index_file, number_of_threads, output_dir, bowtie_report_n
 
     report = []
 
-    for fastq_file in input_files:
-        bt2_cmd = build_bowtie_command(fastq_file, index_file, number_of_threads, output_dir, extra_params)
-    
-        logger.info("ran  :" + bt2_cmd)
-        #subprocess.check_call(bt2_cmd, shell=True)
-        pro = subprocess.Popen(bt2_cmd, shell=True, stderr = subprocess.PIPE)
-        (x, stderr) = pro.communicate()
-        assert (pro.returncode == 0 ), "bowtie has failed"
-
-        report.append( [fastq_file] + get_stats(stderr.splitlines()) )
-         
     filename = os.path.join(output_dir, bowtie_report_name)
     with open(filename, 'wb') as f:
         writer = csv.writer(f, delimiter='\t')
         writer.writerow(('#sample','total', 'not_aligned', 'aligned_once', 'multi_aligned'))
-        writer.writerows(report)
+        for fastq_file in input_files:
+            bt2_cmd = build_bowtie_command(fastq_file, index_file, number_of_threads, output_dir, extra_params)
+        
+            logger.info("ran  :" + bt2_cmd)
+            #subprocess.check_call(bt2_cmd, shell=True)
+            pro = subprocess.Popen(bt2_cmd, shell=True, stderr = subprocess.PIPE)
+            (x, stderr) = pro.communicate()
+            assert (pro.returncode == 0 ), "bowtie has failed"
+    
+            new_row = ( [fastq_file] + get_stats(stderr.splitlines()) )
+         
+            writer.writerow(new_row)
 
 def get_stats(bt_stderr):
     if int(bt_stderr[0].split()[0]) != 0 :
