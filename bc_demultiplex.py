@@ -15,7 +15,7 @@ import os
 import argparse
 import csv
 from logging import getLogger
-from itertools import izip
+from itertools import izip, tee
 from collections import OrderedDict, namedtuple, Counter
 
 from HTSeq import FastqReader, SequenceWithQualities
@@ -28,7 +28,7 @@ CUT_LENGTH = 35
 logger = getLogger('pijp.bc_demultiplex')
 debug, info = logger.debug, logger.info
 
-def main(bc_index_file, sample_sheet, input_files, stats_file, output_dir, min_bc_quality, umi_length=0, bc_length=8, kleine=False):
+def main(bc_index_file, sample_sheet, input_files, stats_file, output_dir, min_bc_quality, umi_length=0, bc_length=8, kleine="false"):
     """ this is the main function of this module. Does the splitting 
         and calls any other function.
     """
@@ -37,11 +37,7 @@ def main(bc_index_file, sample_sheet, input_files, stats_file, output_dir, min_b
     sample_dict = create_sample_dict(sample_sheet)
     files_dict = create_output_files(sample_dict, output_dir)
 
-    if kleine is True:
-        #small seq
-        bc_split = bc_split_se
-    else:
-        bc_split = bc_split_pe
+    single_end = ( "true" in kleine.lower())
 
     try:
         sample_counter = Counter()
@@ -56,7 +52,7 @@ def main(bc_index_file, sample_sheet, input_files, stats_file, output_dir, min_b
             lane = split_name[2]
     
             # run the splitter on this file, and collect the counts
-            sample_counter += bc_split(bc_dict, sample_dict, files_dict, min_bc_quality, lane, il_barcode, r1_file , int(umi_length), int(bc_length))
+            sample_counter += bc_split(bc_dict, sample_dict, files_dict, min_bc_quality, lane, il_barcode, r1_file , int(umi_length), int(bc_length), single_end)
     
         ### Create the stats file.
         total = sum(sample_counter.values())
@@ -127,63 +123,52 @@ def get_sample(sample_dict, bc_dict, read, lane, il_barcode, umi_length, bc_leng
     return sample_dict.get(key ,None)
 
 
-def bc_split_pe(bc_dict, sample_dict, files_dict, min_bc_quality, lane, il_barcode, r1_file, umi_length, bc_length):
-    """ Splits a pair of fastq files according to barcode """
+def bc_split(bc_dict, sample_dict, files_dict, min_bc_quality, lane, il_barcode, r1_file, umi_length, bc_length, single_end):
+    """ Splits a fastq files according to barcode """
     sample_counter = Counter()
-    assert ("_R1_" in r1_file), "File name does not contain R1. Aborting"
-    r1 = FastqReader(r1_file)
-    r2_file = r1_file.replace("_R1_", "_R2_")
-    r2 = FastqReader(r2_file)
+
+    umibc = umi_length + bc_length
+    freader1 = FastqReader(r1_file)
+    if single_end:
+        # "tee" copies the iterator. This way, we can use read1 and read2 also in the single end mode.
+        r1, r2 = tee(freader1, 2)
+    else:
+        r1 = freader1
+        assert ("_R1_" in r1_file), "File name does not contain R1. Aborting"
+        r2_file = r1_file.replace("_R1_", "_R2_")
+        r2 = FastqReader(r2_file)
     for n, (read1, read2) in enumerate(izip(r1,r2)):
-        if (n % 1e5)==0:
-            debug("read number {0}".format(n))
+
         # validate reads are the same
         assert (read1.name.split()[0] == read2.name.split()[0]), "Reads have different ids. Aborting."
+
         # check quality:
-        quals = read1.qual[:(umi_length+bc_length)]
+        quals = read1.qual[:(umibc)]
         if min(quals) >= int(min_bc_quality):
             # find and split
             sample = get_sample(sample_dict, bc_dict, read1, lane, il_barcode, umi_length, bc_length)
             if (sample is not None):
                 fh = files_dict[sample]
                 ### ADD UMIs to the read name
-                read2.name += ' UMI:%s' % read1.seq[:umi_length]
-                read2.write_to_fastq_file(fh)
-                sample_counter[sample] += 1
-            else:
-                fh1 = files_dict['unknown_bc_R1']
-                fh2 = files_dict['unknown_bc_R2']
-                read1.write_to_fastq_file( fh1)
-                read2.write_to_fastq_file( fh2)
-                sample_counter['undetermined'] += 1
-        else:
-            sample_counter['unqualified'] +=1
-    return sample_counter
+                if umi_length == 0 :
+                    name = read2.name
+                else: 
+                    name = read2.name + ' UMI:%s' % read1.seq[:umi_length]
+                if single_end:
+                    read = SequenceWithQualities(read1.seq[umibc:], name, read1.qualstr[umibc:])
+                else:
+                    read2.name = name
+                    read = read2
+                read.write_to_fastq_file(fh)
 
-def bc_split_se(bc_dict, sample_dict, files_dict, min_bc_quality, lane, il_barcode, r1_file, umi_length, bc_length):
-    """ Splits a single fastq file according to barcode """
-    sample_counter = Counter()
-    umibc = umi_length + bc_length
-    r1 = FastqReader(r1_file)
-    for n, read1 in enumerate(r1):
-        if (n % 1e5)==0:
-            debug("read number {0}".format(n))
-        # check quality:
-        
-        quals = read1.qual[:(umibc)]
-        if min(quals) >= int(min_bc_quality):
-            # find and split
-            sample = get_sample(sample_dict, bc_dict, read1, lane, il_barcode, umi_length, bc_length)
-            if (cel_bc_id is not None) and (sample is not None):
-                fh = files_dict[sample]
-                ### ADD UMIs to the read name
-                name = read1.name + ' UMI:%s' % read1.seq[:umi_lengt]
-                read = SequenceWithQualities(read1.seq[umibc:], name, read1.qual[umibc:])
-                read1.write_to_fastq_file(fh)
                 sample_counter[sample] += 1
             else:
                 fh1 = files_dict['unknown_bc_R1']
                 read1.write_to_fastq_file( fh1)
+                if not single_end:
+                    fh2 = files_dict['unknown_bc_R2']
+                    read2.write_to_fastq_file( fh2)
+
                 sample_counter['undetermined'] += 1
         else:
             sample_counter['unqualified'] +=1
