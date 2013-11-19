@@ -18,7 +18,7 @@ from logging import getLogger
 from itertools import izip
 from collections import OrderedDict, namedtuple, Counter
 
-from HTSeq import FastqReader
+from HTSeq import FastqReader, SequenceWithQualities
 
 FN_SCHEME = "{0.project}_{0.series}_sample_{0.id}.fastq"
 FN_UNKNOWN = "undetermined_{0}.fastq"
@@ -28,7 +28,7 @@ CUT_LENGTH = 35
 logger = getLogger('pijp.bc_demultiplex')
 debug, info = logger.debug, logger.info
 
-def main(bc_index_file, sample_sheet, input_files, stats_file, output_dir, min_bc_quality):
+def main(bc_index_file, sample_sheet, input_files, stats_file, output_dir, min_bc_quality, umi_length=0, bc_length=8, kleine=False):
     """ this is the main function of this module. Does the splitting 
         and calls any other function.
     """
@@ -36,13 +36,19 @@ def main(bc_index_file, sample_sheet, input_files, stats_file, output_dir, min_b
     bc_dict = create_bc_dict(bc_index_file)
     sample_dict = create_sample_dict(sample_sheet)
     files_dict = create_output_files(sample_dict, output_dir)
+
+    if kleine is True:
+        #small seq
+        bc_split = bc_split_se
+    else:
+        bc_split = bc_split_pe
+
     try:
         sample_counter = Counter()
     
         for fastq_file in input_files:
             logger.info("splitting file %s", fastq_file)
             r1_file = fastq_file
-            r2_file = fastq_file.replace("_R1_", "_R2_")
         
             # derive lane and il_barcode from filename
             split_name = os.path.basename(fastq_file).split("_")
@@ -50,7 +56,7 @@ def main(bc_index_file, sample_sheet, input_files, stats_file, output_dir, min_b
             lane = split_name[2]
     
             # run the splitter on this file, and collect the counts
-            sample_counter += bc_split(bc_dict, sample_dict, files_dict, min_bc_quality, lane, il_barcode, r1_file, r2_file)
+            sample_counter += bc_split(bc_dict, sample_dict, files_dict, min_bc_quality, lane, il_barcode, r1_file , int(umi_length), int(bc_length))
     
         ### Create the stats file.
         total = sum(sample_counter.values())
@@ -112,10 +118,21 @@ def create_bc_dict(bc_index_file):
             bc_dict[row[1]] = row[0]
     return bc_dict
 
-def bc_split(bc_dict, sample_dict, files_dict, min_bc_quality, lane, il_barcode, r1_file, r2_file):
+
+def get_sample(sample_dict, bc_dict, read, lane, il_barcode, umi_length, bc_length):
+    barcode = str(read.seq[umi_length:(umi_length+bc_length)])
+    cel_bc_id = bc_dict.get(barcode, None)
+    flocell = read.name.split(":")[2]
+    key = (flocell, lane, il_barcode, cel_bc_id)
+    return sample_dict.get(key ,None)
+
+
+def bc_split_pe(bc_dict, sample_dict, files_dict, min_bc_quality, lane, il_barcode, r1_file, umi_length, bc_length):
     """ Splits a pair of fastq files according to barcode """
     sample_counter = Counter()
+    assert ("_R1_" in r1_file), "File name does not contain R1. Aborting"
     r1 = FastqReader(r1_file)
+    r2_file = r1_file.replace("_R1_", "_R2_")
     r2 = FastqReader(r2_file)
     for n, (read1, read2) in enumerate(izip(r1,r2)):
         if (n % 1e5)==0:
@@ -123,27 +140,55 @@ def bc_split(bc_dict, sample_dict, files_dict, min_bc_quality, lane, il_barcode,
         # validate reads are the same
         assert (read1.name.split()[0] == read2.name.split()[0]), "Reads have different ids. Aborting."
         # check quality:
-        quals = read1.qual[0:8]
+        quals = read1.qual[:(umi_length+bc_length)]
         if min(quals) >= int(min_bc_quality):
             # find and split
-            barcode = str(read1.seq[0:8])
-            cel_bc_id = bc_dict.get(barcode, None)
-            flocell = read1.name.split(":")[2]
-            key = (flocell, lane, il_barcode, cel_bc_id)
-            sample = sample_dict.get(key ,None)
-            if (cel_bc_id is not None) and (sample is not None):
+            sample = get_sample(sample_dict, bc_dict, read1, lane, il_barcode, umi_length, bc_length)
+            if (sample is not None):
                 fh = files_dict[sample]
-                (read2[:CUT_LENGTH]).write_to_fastq_file(fh)
+                ### ADD UMIs to the read name
+                read2.name += ' UMI:%s' % read1.seq[:umi_length]
+                read2.write_to_fastq_file(fh)
                 sample_counter[sample] += 1
             else:
                 fh1 = files_dict['unknown_bc_R1']
                 fh2 = files_dict['unknown_bc_R2']
-                (read1).write_to_fastq_file( fh1)
-                (read2[:CUT_LENGTH]).write_to_fastq_file( fh2)
+                read1.write_to_fastq_file( fh1)
+                read2.write_to_fastq_file( fh2)
                 sample_counter['undetermined'] += 1
         else:
             sample_counter['unqualified'] +=1
     return sample_counter
+
+def bc_split_se(bc_dict, sample_dict, files_dict, min_bc_quality, lane, il_barcode, r1_file, umi_length, bc_length):
+    """ Splits a single fastq file according to barcode """
+    sample_counter = Counter()
+    umibc = umi_length + bc_length
+    r1 = FastqReader(r1_file)
+    for n, read1 in enumerate(r1):
+        if (n % 1e5)==0:
+            debug("read number {0}".format(n))
+        # check quality:
+        
+        quals = read1.qual[:(umibc)]
+        if min(quals) >= int(min_bc_quality):
+            # find and split
+            sample = get_sample(sample_dict, bc_dict, read1, lane, il_barcode, umi_length, bc_length)
+            if (cel_bc_id is not None) and (sample is not None):
+                fh = files_dict[sample]
+                ### ADD UMIs to the read name
+                name = read1.name + ' UMI:%s' % read1.seq[:umi_lengt]
+                read = SequenceWithQualities(read1.seq[umibc:], name, read1.qual[umibc:])
+                read1.write_to_fastq_file(fh)
+                sample_counter[sample] += 1
+            else:
+                fh1 = files_dict['unknown_bc_R1']
+                read1.write_to_fastq_file( fh1)
+                sample_counter['undetermined'] += 1
+        else:
+            sample_counter['unqualified'] +=1
+    return sample_counter
+
                 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description= __doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
