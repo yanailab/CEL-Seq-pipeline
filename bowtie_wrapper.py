@@ -37,7 +37,7 @@ def main(input_files, index_file, number_of_threads, output_dir, bowtie_report_n
             #subprocess.check_call(bt2_cmd, shell=True)
             pro = subprocess.Popen(bt2_cmd, shell=True, stderr = subprocess.PIPE)
             (x, stderr) = pro.communicate()
-            assert (pro.returncode == 0 ), "bowtie has failed"
+            assert (pro.returncode == 0 ), "bowtie error %d : %s" % (pro.returncode, stderr)
     
             new_row = ( [fastq_file] + get_stats(stderr.splitlines()) )
          
