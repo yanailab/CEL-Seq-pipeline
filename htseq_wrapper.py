@@ -45,7 +45,8 @@ def main(input_files, gff_file, output_dir, extra_params, count_filename):
                 # for an empty sam file, we want a lot of zeros..
                 ht_col2.append(cycle("0"))
             else:
-                raise  # some other error we don't know about.
+                logger.error(" HTSeq error %d : %s", pro.returncode, stderr)
+                raise Exception("There was some error with HTSeq") 
     
     matrix_header = ["#Sample:"] + base_names
 
