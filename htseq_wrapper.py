@@ -17,8 +17,20 @@ from multiprocessing.pool import ThreadPool
 logger = getLogger("pijp.htseq")
 
 def run_cmd(cmd):
+    """  Run the command, and return the stdout. If there was an error, return zerors. 
+         This is because htseq fails on empty files.
+    """
     logger.info("ran  : " + " ".join( cmd))
-    return subprocess.check_output(cmd).splitlines()
+    try:
+        out = subprocess.check_output(cmd).splitlines()
+    except subprocess.CalledProcessError as e:
+        logger.error("HTSeq error with command : %s", e.cmd)
+        # for an empty sam file, we want a lot of zeros..
+        # but we cannot specify inifinite zeros here because it will take 
+        # forever to return them all.
+        out = None
+    return out
+
 
 def main(input_files, gff_file, output_dir, extra_params, count_filename, procs=50):
 
@@ -38,6 +50,10 @@ def main(input_files, gff_file, output_dir, extra_params, count_filename, procs=
     pool = ThreadPool(procs)
     results = pool.map(run_cmd, cmds)
     for res in results:
+        if res is None:
+            # HTSeq failed (perhaps empty file), so we put a column of zeros.
+            ht_col2.append(cycle(["0"]))
+        else:
             htout = (x.split('\t') for x in  res)
             htout1, htout2 = zip(*htout)
             if ht_col1 is None:
