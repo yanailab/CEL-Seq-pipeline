@@ -154,7 +154,9 @@ def bc_split(bc_dict, sample_dict, files_dict, min_bc_quality, lane, il_barcode,
                 if umi_length == 0 :
                     name = read2.name
                 else: 
-                    name = read2.name + ' UMI:%s' % read1.seq[:umi_length]
+                    ###  According to the SAM format specs, spaces are not allowed.
+                    ###  Bowtie only keeps the first part, so the umi must be there.
+                    name = read2.name.split()[0] + ':UMI:%s' % read1.seq[:umi_length]
                 if single_end:
                     read = SequenceWithQualities(read1.seq[umibc:], name, read1.qualstr[umibc:])
                 else:
