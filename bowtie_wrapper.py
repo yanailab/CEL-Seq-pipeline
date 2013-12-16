@@ -20,7 +20,7 @@ def build_bowtie_command(fastq_file,  index_file, number_of_threads, output_dir,
 
     ##  no-hd means no header lines. 
     ##  -p is for the number of rows.
-    bowtie_cmd = "bowtie2 --no-hd -p {0} {1} {2} -U {3} -S {4} ".format(number_of_threads, extra_params, index_file, fastq_file, samfile)
+    bowtie_cmd = "bowtie2  -p {0} {1} {2} -U {3} -S {4} ".format(number_of_threads, extra_params, index_file, fastq_file, samfile)
     return bowtie_cmd
 
 
