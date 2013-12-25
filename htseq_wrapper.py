@@ -32,8 +32,11 @@ def run_cmd(cmd):
     return out
 
 
-def main(input_files, gff_file, output_dir, extra_params, count_filename, procs=50):
+def main(input_files, gff_file, output_dir, extra_params, count_filename, umi="false", procs=50):
 
+
+    if umi.lower() in ["true","yes","1"]:
+        extra_params += " -u "
     # The first col we need only once, as it is always the same.
     # So we put None, and try to write it on our first chance.
     ht_col1 = None
@@ -44,7 +47,7 @@ def main(input_files, gff_file, output_dir, extra_params, count_filename, procs=
 
        base_names += [os.path.splitext(os.path.basename(sam_file))[0]] 
         #  we need base_names for heading the matrix file.
-       htseq_cmd =  ["htseq-count"] + shlex.split(extra_params) + [ sam_file, gff_file]
+       htseq_cmd =  ["htseq-count-umified"] + shlex.split(extra_params) + [ sam_file, gff_file]
        cmds.append(htseq_cmd)
     
     pool = ThreadPool(procs)
