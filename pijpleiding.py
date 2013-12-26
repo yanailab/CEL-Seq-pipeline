@@ -28,14 +28,14 @@ import os
 import logging
 import json
 
-import bowtie_wrapper, bc_demultiplex, htseq_wrapper, clean_up
+import bowtie_wrapper, bc_demultiplex, htseq_wrapper, clean_up, scythe_wrapper
 
 ###################################################################################################
 ## sections are the names of sections in the config file.
 ## segments are the functions you run. The segments and sections MUST be ordered
 ## the same way.
-SECTIONS = ( "bc_demultiplex", "bowtie_wrapper", "htseq_wrapper", "clean_up")
-SEGMENTS = ( bc_demultiplex.main, bowtie_wrapper.main, htseq_wrapper.main, clean_up.main)
+SECTIONS = ( "scythe_wrapper", "bc_demultiplex", "bowtie_wrapper", "htseq_wrapper", "clean_up")
+SEGMENTS = ( scythe_wrapper.main, bc_demultiplex.main, bowtie_wrapper.main, htseq_wrapper.main, clean_up.main)
 ###################################################################################################
 
 # some definitions for the loggers.
@@ -101,12 +101,14 @@ def create_dir(dirname):
     try:
         os.makedirs(dirname)
     except OSError:
-        # directory already exists..
-        if len(os.listdir(dirname)) != 0:
+        # directory already exists.. check if empty or
+        # perhaps has only pijp.log file. otherwise, prompt the user
+        if (len(os.listdir(dirname)) != 0) and (os.listdir(dirname) != ['pijp.log']):
             ans = None
             while ans not in ["y", "n"]:
                 ans = raw_input("Writing to a non-empty directory. Files may be overwritten. Are you sure? [y/n] : ")
             if ans == "n":
+                logger.info("Aborted by user because of non empty dir")
                 exit(1)
 
 
