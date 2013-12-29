@@ -46,6 +46,10 @@ def main(input_files, index_file, number_of_threads, output_dir, bowtie_report_n
             writer.writerow(new_row)
 
 def get_stats(bt_stderr):
+    ## Write all warnings to log, and skip them.
+    while bt_stderr[0].startswith("Warning"):
+        logger.info("BOWTIE : " + bt_stderr[0])
+        bt_stderr.pop(0)
     if int(bt_stderr[0].split()[0]) != 0 :
         total = bt_stderr[1].split()[0]
         not_aligned = bt_stderr[2].split()[0]
