@@ -221,10 +221,10 @@ def count_reads_in_features( sam_filename, gff_filename, stranded,
 
    if umis:
        for fn in sorted( counts.keys() ):
-           print "%s\t%d" % ( fn, len(umi_counts[fn]) )
+           print "%s\t%d" % ( fn.strip(), len(umi_counts[fn]) )
    else:
        for fn in sorted( counts.keys() ):
-           print "%s\t%d" % ( fn, counts[fn] )
+           print "%s\t%d" % ( fn.strip(), counts[fn] )
    print "no_feature\t%d" % empty
    print "ambiguous\t%d" % ambiguous
    print "too_low_aQual\t%d" % lowqual

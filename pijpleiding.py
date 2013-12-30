@@ -106,6 +106,7 @@ def create_dir(dirname):
         if (len(os.listdir(dirname)) != 0) and (os.listdir(dirname) != ['pijp.log']):
             ans = None
             while ans not in ["y", "n"]:
+                print("Opening directory {0} ".format(dirname))
                 ans = raw_input("Writing to a non-empty directory. Files may be overwritten. Are you sure? [y/n] : ")
             if ans == "n":
                 logger.info("Aborted by user because of non empty dir")
