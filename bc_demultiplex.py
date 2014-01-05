@@ -143,6 +143,11 @@ def bc_split(bc_dict, sample_dict, files_dict, min_bc_quality, lane, il_barcode,
         # validate reads are the same
         assert (read1.name.split()[0] == read2.name.split()[0]), "Reads have different ids. Aborting."
 
+        # check minimal length
+        if len(read1.qual) < umibc:
+            sample_counter['unqualified'] +=1
+            ### skip to next iteration of loop!
+            continue
         # check quality:
         quals = read1.qual[:(umibc)]
         if min(quals) >= int(min_bc_quality):
