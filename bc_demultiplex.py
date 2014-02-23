@@ -126,7 +126,6 @@ def get_sample(sample_dict, bc_dict, read, lane, il_barcode, umi_length, bc_leng
 def bc_split(bc_dict, sample_dict, files_dict, min_bc_quality, lane, il_barcode, r1_file, umi_length, bc_length, single_end):
     """ Splits a fastq files according to barcode """
     sample_counter = Counter()
-
     umibc = umi_length + bc_length
     freader1 = FastqReader(r1_file)
     if single_end:
@@ -151,6 +150,9 @@ def bc_split(bc_dict, sample_dict, files_dict, min_bc_quality, lane, il_barcode,
         # check quality:
         quals = read1.qual[:(umibc)]
         if min(quals) >= int(min_bc_quality):
+            ### trim read to CUT_LENGTH
+            if len(read2)>CUT_LENGTH:
+                read2 = read2[1:CUT_LENGTH]
             # find and split
             sample = get_sample(sample_dict, bc_dict, read1, lane, il_barcode, umi_length, bc_length)
             if (sample is not None):
