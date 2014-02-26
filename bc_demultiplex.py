@@ -151,7 +151,7 @@ def bc_split(bc_dict, sample_dict, files_dict, min_bc_quality, lane, il_barcode,
         quals = read1.qual[:(umibc)]
         if min(quals) >= int(min_bc_quality):
             ### trim read to CUT_LENGTH
-            if len(read2)>CUT_LENGTH:
+            if len(read2)>CUT_LENGTH and not single_end:
                 read2 = read2[1:CUT_LENGTH]
             # find and split
             sample = get_sample(sample_dict, bc_dict, read1, lane, il_barcode, umi_length, bc_length)
