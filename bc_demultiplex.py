@@ -17,6 +17,7 @@ import csv
 from logging import getLogger
 from itertools import izip, tee
 from collections import OrderedDict, namedtuple, Counter
+from multiprocessing.pool import ThreadPool
 
 from HTSeq import FastqReader, SequenceWithQualities
 
@@ -28,11 +29,11 @@ CUT_LENGTH = 35
 logger = getLogger('pijp.bc_demultiplex')
 debug, info = logger.debug, logger.info
 
-def main(bc_index_file, sample_sheet, input_files, stats_file, output_dir, min_bc_quality, umi_length=0, bc_length=8, kleine="false"):
+def main(bc_index_file, sample_sheet, input_files, stats_file, output_dir, min_bc_quality, umi_length=0, bc_length=8, kleine="false",cut_length=CUT_LENGTH):
     """ this is the main function of this module. Does the splitting 
         and calls any other function.
     """
-
+    cut_length = int(cut_length)
     bc_dict = create_bc_dict(bc_index_file)
     sample_dict = create_sample_dict(sample_sheet)
     files_dict = create_output_files(sample_dict, output_dir)
@@ -52,7 +53,7 @@ def main(bc_index_file, sample_sheet, input_files, stats_file, output_dir, min_b
             lane = split_name[2]
     
             # run the splitter on this file, and collect the counts
-            sample_counter += bc_split(bc_dict, sample_dict, files_dict, min_bc_quality, lane, il_barcode, r1_file , int(umi_length), int(bc_length), single_end)
+            sample_counter += bc_split(bc_dict, sample_dict, files_dict, min_bc_quality, lane, il_barcode, r1_file , int(umi_length), int(bc_length), single_end, cut_length)
     
         ### Create the stats file.
         total = sum(sample_counter.values())
@@ -123,7 +124,7 @@ def get_sample(sample_dict, bc_dict, read, lane, il_barcode, umi_length, bc_leng
     return sample_dict.get(key ,None)
 
 
-def bc_split(bc_dict, sample_dict, files_dict, min_bc_quality, lane, il_barcode, r1_file, umi_length, bc_length, single_end):
+def bc_split(bc_dict, sample_dict, files_dict, min_bc_quality, lane, il_barcode, r1_file, umi_length, bc_length, single_end, cut_length):
     """ Splits a fastq files according to barcode """
     sample_counter = Counter()
     umibc = umi_length + bc_length
@@ -150,9 +151,9 @@ def bc_split(bc_dict, sample_dict, files_dict, min_bc_quality, lane, il_barcode,
         # check quality:
         quals = read1.qual[:(umibc)]
         if min(quals) >= int(min_bc_quality):
-            ### trim read to CUT_LENGTH
-            if len(read2)>CUT_LENGTH and not single_end:
-                read2 = read2[1:CUT_LENGTH]
+            ### trim read to cut_length
+            if len(read2)>cut_length and not single_end:
+                read2 = read2[1:cut_length]
             # find and split
             sample = get_sample(sample_dict, bc_dict, read1, lane, il_barcode, umi_length, bc_length)
             if (sample is not None):
