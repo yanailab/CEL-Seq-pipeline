@@ -73,4 +73,4 @@ def get_stats(bt_stderr):
         mapped_percent = bt_stderr[4].split()[0]
         return [total, not_aligned, aligned, multi_aligned, mapped_percent]
     else:
-        return [0,0,0,0,0]
+        return ['0','0','0','0','0']

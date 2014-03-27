@@ -34,7 +34,7 @@ def run_cmd(cmd):
 
 def main(input_files, gff_file, output_dir, extra_params, count_filename, umi="false", procs=50):
 
-
+    procs = int(procs)
     if umi.lower() in ["true","yes","1"]:
         extra_params += " -u "
     # The first col we need only once, as it is always the same.
