@@ -28,14 +28,14 @@ import os
 import logging
 import json
 
-import bowtie_wrapper, bc_demultiplex, htseq_wrapper, clean_up, scythe_wrapper
+import bowtie_wrapper, bc_demultiplex, htseq_wrapper, clean_up
 
 ###################################################################################################
 ## sections are the names of sections in the config file.
 ## segments are the functions you run. The segments and sections MUST be ordered
 ## the same way.
-SECTIONS = ( "scythe_wrapper", "bc_demultiplex", "bowtie_wrapper", "htseq_wrapper", "clean_up")
-SEGMENTS = ( scythe_wrapper.main, bc_demultiplex.main, bowtie_wrapper.main, htseq_wrapper.main, clean_up.main)
+SECTIONS = ( "bc_demultiplex", "bowtie_wrapper", "htseq_wrapper", "clean_up")
+SEGMENTS = ( bc_demultiplex.main, bowtie_wrapper.main, htseq_wrapper.main, clean_up.main)
 ###################################################################################################
 
 # some definitions for the loggers.
