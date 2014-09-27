@@ -24,13 +24,11 @@ from Bio import Seq
 
 FN_SCHEME = "{0.project}_{0.series}_sample_{0.id}.fastq"
 FN_UNKNOWN = "undetermined_{0}.fastq"
-CUT_LENGTH = 35
-
 
 logger = getLogger('pijp.bc_demultiplex')
 debug, info = logger.debug, logger.info
 
-def main(bc_index_file, sample_sheet, input_files, stats_file, output_dir, min_bc_quality, umi_length=0, bc_length=8, kleine="false",cut_length=CUT_LENGTH,flip_umibc="false",revcom="false"):
+def main(bc_index_file, sample_sheet, input_files, stats_file, output_dir, min_bc_quality, umi_length=0, bc_length=8, cut_length=35):
     """ this is the main function of this module. Does the splitting 
         and calls any other function.
     """
@@ -38,10 +36,6 @@ def main(bc_index_file, sample_sheet, input_files, stats_file, output_dir, min_b
     bc_dict = create_bc_dict(bc_index_file)
     sample_dict = create_sample_dict(sample_sheet)
     files_dict = create_output_files(sample_dict, output_dir)
-
-    flip_umibc = ( "true" in flip_umibc.lower())
-    revcom = ( "true" in revcom.lower())
-    single_end = ( "true" in kleine.lower())
 
     try:
         sample_counter = Counter()
@@ -55,7 +49,7 @@ def main(bc_index_file, sample_sheet, input_files, stats_file, output_dir, min_b
             lane = split_name[2]
     
             # run the splitter on this file, and collect the counts
-            sample_counter += bc_split(bc_dict, sample_dict, files_dict, min_bc_quality, lane, il_barcode, r1_file , int(umi_length), int(bc_length), single_end, cut_length, flip_umibc,revcom)
+            sample_counter += bc_split(bc_dict, sample_dict, files_dict, min_bc_quality, lane, il_barcode, r1_file , int(umi_length), int(bc_length), cut_length)
     
         ### Create the stats file.
         total = sum(sample_counter.values())
@@ -126,20 +120,16 @@ def get_sample(sample_dict, bc_dict, read, lane, il_barcode, umi_strt, umi_end, 
     return sample_dict.get(key ,None)
 
 
-def bc_split(bc_dict, sample_dict, files_dict, min_bc_quality, lane, il_barcode, r1_file, umi_length, bc_length, single_end, cut_length, flip_umibc,revcom):
+def bc_split(bc_dict, sample_dict, files_dict, min_bc_quality, lane, il_barcode, r1_file, umi_length, bc_length, cut_length):
     """ Splits a fastq files according to barcode """
     sample_counter = Counter()
     umibc = umi_length + bc_length
     freader1 = FastqReader(r1_file)
-    if single_end:
-        # "tee" copies the iterator. This way, we can use read1 and read2 also in the single end mode.
-        r1, r2 = tee(freader1, 2)
-    else:
-        r1 = freader1
-        assert ("_R1" in r1_file), "File name does not contain R1. Aborting"
-        r2_file = r1_file.replace("_R1", "_R2")
-        assert (r1_file != r2_file), "Couldn't find R2"
-        r2 = FastqReader(r2_file)
+    r1 = freader1
+    assert ("_R1" in r1_file), "File name does not contain R1. Aborting"
+    r2_file = r1_file.replace("_R1", "_R2")
+    assert (r1_file != r2_file), "Couldn't find R2"
+    r2 = FastqReader(r2_file)
     for n, (read1, read2) in enumerate(izip(r1,r2)):
 
         # validate reads are the same
@@ -154,19 +144,13 @@ def bc_split(bc_dict, sample_dict, files_dict, min_bc_quality, lane, il_barcode,
         quals = read1.qual[:(umibc)]
         if min(quals) >= int(min_bc_quality):
             ### trim read to cut_length
-            if len(read2)>cut_length and not single_end:
+            if len(read2)>cut_length:
                 read2 = read2[0:cut_length]
             # find and split
-            if flip_umibc:
-                bc_strt = 0
-                bc_end = bc_length
-                umi_strt = bc_length
-                umi_end = bc_length+umi_length
-            else:
-                umi_strt = 0
-                umi_end = umi_length
-                bc_strt = umi_length
-                bc_end = bc_length+umi_length
+            umi_strt = 0
+            umi_end = umi_length
+            bc_strt = umi_length
+            bc_end = bc_length+umi_length
             sample = get_sample(sample_dict, bc_dict, read1, lane, il_barcode, umi_strt, umi_end, bc_strt,bc_end)
             if (sample is not None):
                 fh = files_dict[sample]
@@ -177,13 +161,8 @@ def bc_split(bc_dict, sample_dict, files_dict, min_bc_quality, lane, il_barcode,
                     ###  According to the SAM format specs, spaces are not allowed.
                     ###  Bowtie only keeps the first part, so the umi must be there.
                     name = read2.name.split()[0] + ':UMI:%s:' % read1.seq[umi_strt:umi_end]
-                if single_end:
-                    read = SequenceWithQualities(read1.seq[umibc:], name, read1.qualstr[umibc:])
-                    if revcom:
-                        read = read.get_reverse_complement()
-                else:
-                    read2.name = name
-                    read = read2
+                read2.name = name
+                read = read2
                 read.write_to_fastq_file(fh)
 
                 sample_counter[sample] += 1
@@ -191,9 +170,8 @@ def bc_split(bc_dict, sample_dict, files_dict, min_bc_quality, lane, il_barcode,
                 bc = read1.seq[bc_strt:bc_end]
                 fh1 = files_dict['unknown_bc_R1']
                 read1.write_to_fastq_file( fh1)
-                if not single_end:
-                    fh2 = files_dict['unknown_bc_R2']
-                    read2.write_to_fastq_file( fh2)
+                fh2 = files_dict['unknown_bc_R2']
+                read2.write_to_fastq_file( fh2)
 
                 sample_counter['undetermined'] += 1
         else:
