@@ -50,7 +50,8 @@ def main(config_file):
     config = ConfigParser.ConfigParser()
     config.read(config_file)
 
-    logger.info("===== Started pijpleiding with config file : %s", config_file)
+    # does command do anything? called before handle is set. any point to it?
+    logger.info("===== Started pijpleiding with config file : %s =====", config_file)
     
     for section, segment in zip(SECTIONS, SEGMENTS):
 
@@ -76,6 +77,7 @@ def main(config_file):
             hdlr = logging.FileHandler(log_fname)
             hdlr.setFormatter(log_formatter)
             logger.addHandler(hdlr)
+            logger.info("===== pipeline at %s =====", os.path.realpath(__file__))
             logger.info("========== writing log to file at %s ==========", log_fname)
             logger.info("Section : %s",section)
             logger.info("parameters : %s", json.dumps(parameters))
@@ -83,15 +85,16 @@ def main(config_file):
 
             ####  run the command ============================================
             # that's the heart of the whole pipeline
+            # in example, bc_demultiplex.main(parameters_from_log_file) 
             segment(**parameters)
             #### =============================================================
 
             # remove the log file handler:
-            logger.info("===== closing log")
+            logger.info("=========== closing log ===========")
             logger.removeHandler(hdlr)
 
-
-    logger.info("===== Successfuly finished pijpleiding")
+    # as beofre, not seen in log file. declared after handle closed. any point to it?
+    logger.info("===== Successfuly finished pijpleiding =====")
 
 
 
