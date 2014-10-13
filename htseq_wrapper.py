@@ -16,7 +16,7 @@ import argparse
 
 import htseq_count_umified
 
-from multiprocessing.pool import ThreadPool
+from multiprocessing import Pool
 
 def build_argument_opts(cmd_line_params):
     """ Parse the input arguments (string) so that it is easily readable by htseq-count
@@ -78,7 +78,7 @@ def main(input_files, gff_file, output_dir, extra_params, count_filename, umi="f
        cmds.append(htseq_cmd)
      
     # running htseq-count on multiple processes
-    pool = ThreadPool(procs)
+    pool = Pool(procs)
     results = pool.map(run_cmd, cmds)
     for res in results:
         if res is None:
