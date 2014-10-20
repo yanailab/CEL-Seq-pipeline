@@ -48,11 +48,11 @@ def run_cmd(cmd):
     args = build_argument_opts(cmd[0])
     logger.info("ran HTSeq-count: " + sam_file + ', '+ gff_file + ', ' + str(args))
     try:
-         out = htseq_count_umified.count_reads_in_features( sam_file, gff_file, args.stranded,
+        out = htseq_count_umified.count_reads_in_features( sam_file, gff_file, args.stranded,
                args.mode, args.featuretype, args.idattr, args.quiet, args.minaqual, 
                args.samout, args.umis)
-    except:
-         logger.error("HTSeq error with command : %s", cmd)
+    except KeyError as e:
+         logger.error("HTSeq error with command : %s : %s", cmd,str(e))
          out = None
     return out    
 
