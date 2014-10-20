@@ -5,35 +5,62 @@
     Outputs one file, the expression matrix.
 """
 
-import subprocess
+#import subprocess
 from logging import getLogger
 import shlex
 import os.path
+import sys
 import csv
 from itertools import cycle
+import argparse
 
-from multiprocessing.pool import ThreadPool
+import htseq_count_umified
 
-logger = getLogger("pijp.htseq")
+from multiprocessing import Pool
+
+def build_argument_opts(cmd_line_params):
+    """ Parse the input arguments (string) so that it is easily readable by htseq-count
+    """
+    #print >> sys.stderr, " ".join(sys.argv)
+    parser = argparse.ArgumentParser(description='Python wrapper for htseq-count.')
+    # htseq-count arguments
+    parser.add_argument('-m','--mode',dest='mode',default='union')
+    parser.add_argument('-s','--stranded',dest='stranded',default='yes')
+    parser.add_argument('-a','--minaqual',type=int,dest='minaqual',default=0)
+    parser.add_argument('-t','--featuretype',dest='featuretype',default='exon')
+    parser.add_argument('-i','--idattr',dest='idattr',default='gene_id')
+    # more htseq-count commands
+    parser.add_argument('-o','--samout',dest='samout',default='')
+    parser.add_argument('-q','--quiet',dest='quiet',action="store_true",default=False)
+    parser.add_argument('-u', '--umis', dest='umis',action="store_true",default=False)
+    #parser.add_argument('-u', '--umis', dest='umis', action="store_true",default='False')
+    
+    arguments = parser.parse_args(shlex.split(cmd_line_params))
+    return arguments
 
 def run_cmd(cmd):
-    """  Run the command, and return the stdout. If there was an error, return zerors. 
-         This is because htseq fails on empty files.
+    """  Run the command, and return a feature/count list. 
+         If there was an error, return zeros. 
     """
-    logger.info("ran  : " + " ".join( cmd))
+    logger = getLogger("pijp.htseq")
+    sam_file = cmd[1]
+    gff_file = cmd[2]
+    args = build_argument_opts(cmd[0])
+    logger.info("ran HTSeq-count: " + sam_file + ', '+ gff_file + ', ' + str(args))
     try:
-        out = subprocess.check_output(cmd).splitlines()
-    except subprocess.CalledProcessError as e:
-        logger.error("HTSeq error with command : %s", e.cmd)
-        # for an empty sam file, we want a lot of zeros..
-        # but we cannot specify inifinite zeros here because it will take 
-        # forever to return them all.
-        out = None
-    return out
+         out = htseq_count_umified.count_reads_in_features( sam_file, gff_file, args.stranded,
+               args.mode, args.featuretype, args.idattr, args.quiet, args.minaqual, 
+               args.samout, args.umis)
+    except:
+         logger.error("HTSeq error with command : %s", cmd)
+         out = None
+    return out    
 
 
 def main(input_files, gff_file, output_dir, extra_params, count_filename, umi="false", procs=50):
-
+    """ HTSeq-count wrapper main. Counts input SAMs against given reference with given args.
+        Sums all counts in a table.
+    """
     procs = int(procs)
     if umi.lower() in ["true","yes","1"]:
         extra_params += " -u "
@@ -42,29 +69,29 @@ def main(input_files, gff_file, output_dir, extra_params, count_filename, umi="f
     ht_col1 = None
     ht_col2 = []
     base_names = []
-    cmds = []
+    cmds = []     
+    # command arguments for each input SAM file
     for sam_file in input_files:
-
        base_names += [os.path.splitext(os.path.basename(sam_file))[0]] 
         #  we need base_names for heading the matrix file.
-       htseq_cmd =  ["htseq-count-umified"] + shlex.split(extra_params) + [ sam_file, gff_file]
+       htseq_cmd =  [extra_params, sam_file, gff_file]
        cmds.append(htseq_cmd)
-    
-    pool = ThreadPool(procs)
+     
+    # running htseq-count on multiple processes
+    pool = Pool(procs)
     results = pool.map(run_cmd, cmds)
     for res in results:
         if res is None:
             # HTSeq failed (perhaps empty file), so we put a column of zeros.
             ht_col2.append(cycle(["0"]))
         else:
-            htout = (x.split('\t') for x in  res)
-            htout1, htout2 = zip(*htout)
+            htout1, htout2 = res
             if ht_col1 is None:
                 ht_col1 = htout1
             ht_col2.append(htout2)
-    
-    matrix_header = ["#Sample:"] + base_names
 
+    # make a htseq-count matrix of results for output
+    matrix_header = ["#Sample:"] + base_names
     matrix = zip( ht_col1, *ht_col2)
     with open(os.path.join(output_dir, count_filename), "w") as fh:
         matwriter = csv.writer(fh, delimiter='\t')
