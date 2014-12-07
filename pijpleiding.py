@@ -48,7 +48,11 @@ log_formatter = logging.Formatter(LOGFORMAT)
 def main(config_file):
     
     config = ConfigParser.ConfigParser()
-    config.read(config_file)
+    try:
+        config_fid = open(config_file)
+        config.readfp(config_fid)
+    except IOError:
+        raise
 
     logger.info("===== Started pijpleiding with config file : %s", config_file)
     
