@@ -92,6 +92,9 @@ def main(input_files, gff_file, output_dir, extra_params, count_filename, umi="f
 
     # make a htseq-count matrix of results for output
     matrix_header = ["#Sample:"] + base_names
+    if ht_col1 is None:
+        #sys.exit("Error occured - Expression matrix completely empty")
+        raise TypeError("Error occured - Expression matrix completely empty")
     matrix = zip( ht_col1, *ht_col2)
     with open(os.path.join(output_dir, count_filename), "w") as fh:
         matwriter = csv.writer(fh, delimiter='\t')
