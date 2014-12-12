@@ -63,7 +63,7 @@ def count_reads_in_features( sam_filename, gff_filename, stranded,
       for f in gff:
          if f.type == feature_type:
             try:
-               feature_id = f.attr[ id_attribute ]
+               feature_id = f.attr[ id_attribute ].strip()
             except KeyError:
                sys.exit( "Feature %s does not contain a '%s' attribute" % 
                   ( f.name, id_attribute ) )
@@ -72,9 +72,9 @@ def count_reads_in_features( sam_filename, gff_filename, stranded,
                   "running htseq-count in stranded mode. Use '--stranded=no'." % 
                   ( f.name, f.iv ) )
             features[ f.iv ] += feature_id
-            counts[ f.attr[ id_attribute ] ] = 0
+            counts[ feature_id ] = 0
             # added strip to avoid key error
-            if umis: umi_counts[ f.attr[ id_attribute ].strip() ] = Counter()
+            if umis: umi_counts[ feature_id ] = Counter()
          i += 1
          if i % 100000 == 0 and not quiet:
             sys.stderr.write( "%d GFF lines processed.\n" % i )
@@ -223,7 +223,7 @@ def count_reads_in_features( sam_filename, gff_filename, stranded,
       samoutfile.close()
 
    #sorted feature list. features+counts
-   feats  = [ fn.strip() for fn in sorted(counts.keys()) ]
+   feats  = [ fn for fn in sorted(counts.keys()) ]
    if umis:
        counts = [ len(umi_counts[fn]) for fn in feats ]
    else:
