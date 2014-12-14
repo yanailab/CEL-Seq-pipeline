@@ -14,21 +14,24 @@ Python: python-dev, htseq, argparse
 Orientation (local copy-YanaiLab)
 ===============
 You are in one of three:  
-* Currently, the "origin" github repository https://github.com/yanailab/CEL-Seq-pipeline.git  
-      Only houses master  
-* The dev directory /data/tools/pipeline_dev  
-      Houses dev and master and sub-branches  
+* The full-repositories/work directory /data/tools/pipeline_dev  
+      Houses dev and master and sub-branches 
+* The dev directory /data/tools/pipeline_dev:
+      Only has the stable development branch
 * The stable directory /data/tools/pipeline_stable  
-      Only houses master  
+      Only houses the stable master branch
 
 Synching across (local copy-YanaiLab)
 ===================
-After done making changes at pipeline_dev the stable/master branch;  
+After done making changes at pipeline the stable/master branch;  
 * Sync to github:  
-        `cd /data/tools/pipeline_dev`  
+        `cd /data/tools/pipeline`
         `git push origin master`  
 * Sync to stable pipeline:  
         `cd /data/tools/pipeline_stable`  
         `git pull origin master`  
-
+For updating changes at the dev branch;
+* Sync to dev pipeline:
+        `cd /data/tools/pipeline_dev`
+        `git pull origin dev`
 
