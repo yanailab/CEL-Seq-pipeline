@@ -66,8 +66,8 @@ def main(input_files, gff_file, output_dir, extra_params, count_filename, umi="f
         extra_params += " -u "
     # The first col we need only once, as it is always the same.
     # So we put None, and try to write it on our first chance.
-    ht_col1 = None
-    ht_col2 = []
+    feats = None
+    counts = []
     base_names = []
     cmds = []     
     # command arguments for each input SAM file
@@ -83,16 +83,19 @@ def main(input_files, gff_file, output_dir, extra_params, count_filename, umi="f
     for res in results:
         if res is None:
             # HTSeq failed (perhaps empty file), so we put a column of zeros.
-            ht_col2.append(cycle(["0"]))
+            counts.append(cycle(["0"]))
         else:
-            htout1, htout2 = res
-            if ht_col1 is None:
-                ht_col1 = htout1
-            ht_col2.append(htout2)
-
+            (feats_in, counts_in) = res
+            if feats is None:
+                feats = feats_in
+            counts.append(counts_in)
+    
     # make a htseq-count matrix of results for output
     matrix_header = ["#Sample:"] + base_names
-    matrix = zip( ht_col1, *ht_col2)
+    if feats is None:
+        raise TypeError("Error occured - no features for counting")
+    matrix_header = ["#Sample:"] + base_names
+    matrix = zip( feats, *counts )
     with open(os.path.join(output_dir, count_filename), "w") as fh:
         matwriter = csv.writer(fh, delimiter='\t')
         matwriter.writerow(matrix_header)
