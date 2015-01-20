@@ -8,7 +8,13 @@ import HTSeq
 
 class UnknownChrom( Exception ):
    pass
-   
+
+class EmptySamError(Exception):
+   def __init__(self, sam_filename=''):
+      self.sam_filename = sam_filename
+   def __str__(self):
+      return 'Empty sam file %s' % self.sam_filename
+
 def invert_strand( iv ):
    iv2 = iv.copy()
    if iv2.strand == "+":
@@ -100,9 +106,8 @@ def count_reads_in_features( sam_filename, gff_filename, stranded,
          first_read = read_seq_iter.next()
          read_seq = itertools.chain( [ first_read ], read_seq_iter )
       pe_mode = first_read.paired_end
-   except:
-      sys.stderr.write( "Error occured when reading first line of sam file.\n" )
-      raise
+   except StopIteration:
+      raise EmptySamError(sam_filename)
 
    try:
       if pe_mode:

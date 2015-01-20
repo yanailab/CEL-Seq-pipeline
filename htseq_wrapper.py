@@ -51,8 +51,8 @@ def run_cmd(cmd):
          out = htseq_count_umified.count_reads_in_features( sam_file, gff_file, args.stranded,
                args.mode, args.featuretype, args.idattr, args.quiet, args.minaqual, 
                args.samout, args.umis)
-    except:
-         logger.error("HTSeq error with command : %s", cmd)
+    except htseq_count_umified.EmptySamError:
+         logger.exception("HTSeq error with command : %s", cmd)
          out = None
     return out    
 
