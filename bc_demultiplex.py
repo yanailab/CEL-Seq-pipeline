@@ -40,16 +40,12 @@ def main(bc_index_file, sample_sheet, input_files, stats_file, output_dir, min_b
     try:
         sample_counter = Counter()
         for fastq_file in input_files:
-            logger.info("splitting file %s", fastq_file)
-            r1_file = fastq_file
-        
-            # derive lane and il_barcode from filename
-            split_name = os.path.basename(fastq_file).split("_")
-            il_barcode = split_name[0]
-            lane = split_name[2]
-    
+            raw_fastq_dict = sanity_check_raw(fastq_file)
+            il_barcode = raw_fastq_dict["index"]
+            lane = raw_fastq_dict["lane"]
+            flocell = raw_fastq_dict["flocell"]
             # run the splitter on this file, and collect the counts
-            sample_counter += bc_split(bc_dict, sample_dict, files_dict, min_bc_quality, lane, il_barcode, r1_file , int(umi_length), int(bc_length), cut_length)
+            sample_counter += bc_split(bc_dict, sample_dict, files_dict, min_bc_quality, lane, il_barcode, flocell, fastq_file, int(umi_length), int(bc_length), cut_length)
     
         ### Create the stats file.
         total = sum(sample_counter.values())
@@ -97,7 +93,7 @@ def create_sample_dict(sample_sheet_file):
             id = "{0:04}".format(int(row["#id"]))  #  id has an extra "#" becaues its the first field
             key = Key(row["flocell"], row["lane"], row["il_barcode"], row["cel_barcode"])
             sample_dict[key] = Sample_info(id, row["series"], row["project"])
-
+    
     return sample_dict                              
 
 def create_bc_dict(bc_index_file):
@@ -111,30 +107,52 @@ def create_bc_dict(bc_index_file):
             bc_dict[row[1]] = row[0]
     return bc_dict
 
+def sanity_check_raw(fastq_file):
+    """ derive lane and il_barcode from filename """
+    raw_fastq_dict = dict()
+    split_name = os.path.basename(fastq_file).split("_")
+    raw_fastq_dict["index"] = split_name[0]
+    raw_fastq_dict["barcode"] = split_name[1]
+    raw_fastq_dict["lane"] = split_name[2]
+    raw_fastq_dict["strand"] = split_name[3]
+    with open(fastq_file, 'r') as f:
+       first_line = f.readline()
+    raw_fastq_dict["flocell"] = first_line.split(":")[2]
+    assert ("index" in raw_fastq_dict["index"].lower()), "File name may not contain an index. Aborting (%r)" % fastq_file
+    assert ("l" in raw_fastq_dict["lane"].lower()), "File name may not contain a lane. Aborting (%r)" % fastq_file
+    assert ("_R1" in fastq_file), "File name does not contain R1. Aborting (%r)" % fastq_file
+    r2_file = fastq_file.replace("_R1", "_R2")
+    assert (os.path.isfile(r2_file)), "Could not find R2 (%r)" % r2_file
+    return raw_fastq_dict
 
-def get_sample(sample_dict, bc_dict, read, lane, il_barcode, umi_strt, umi_end, bc_strt, bc_end):
+def get_sample(sample_dict, bc_dict, read, lane, il_barcode, flocell, umi_strt, umi_end, bc_strt, bc_end):
     barcode = str(read.seq[bc_strt:bc_end])
     cel_bc_id = bc_dict.get(barcode, None)
-    flocell = read.name.split(":")[2]
     key = (flocell, lane, il_barcode, cel_bc_id)
     return sample_dict.get(key ,None)
 
+def filter_samples(sample_dict, lane, il_barcode, flocell):
+    for sample in sample_dict:
+        if not (sample.flocell==flocell and sample.lane==lane and sample.il_barcode==il_barcode):
+            sample_dict.pop(sample)
+    return sample_dict
 
-def bc_split(bc_dict, sample_dict, files_dict, min_bc_quality, lane, il_barcode, r1_file, umi_length, bc_length, cut_length):
+def bc_split(bc_dict, sample_dict, files_dict, min_bc_quality, lane, il_barcode, flocell, r1_file, umi_length, bc_length, cut_length):
     """ Splits a fastq files according to barcode """
     sample_counter = Counter()
     umibc = umi_length + bc_length
     freader1 = FastqReader(r1_file)
     r1 = freader1
-    assert ("_R1" in r1_file), "File name does not contain R1. Aborting"
     r2_file = r1_file.replace("_R1", "_R2")
-    assert (r1_file != r2_file), "Couldn't find R2"
     r2 = FastqReader(r2_file)
-    for n, (read1, read2) in enumerate(izip(r1,r2)):
-
+    sample_dict = filter_samples(sample_dict, lane, il_barcode, flocell)
+    if (len(sample_dict)>0):
+      logger.info("splitting file %s", r1_file)
+      for n, (read1, read2) in enumerate(izip(r1,r2)):
+        
         # validate reads are the same
         assert (read1.name.split()[0] == read2.name.split()[0]), "Reads have different ids. Aborting."
-
+        
         # check minimal length
         if len(read1.qual) < umibc:
             sample_counter['unqualified'] +=1
@@ -151,7 +169,7 @@ def bc_split(bc_dict, sample_dict, files_dict, min_bc_quality, lane, il_barcode,
             umi_end = umi_length
             bc_strt = umi_length
             bc_end = bc_length+umi_length
-            sample = get_sample(sample_dict, bc_dict, read1, lane, il_barcode, umi_strt, umi_end, bc_strt,bc_end)
+            sample = get_sample(sample_dict, bc_dict, read1, lane, il_barcode, flocell, umi_strt, umi_end, bc_strt, bc_end)
             if (sample is not None):
                 fh = files_dict[sample]
                 ### ADD UMIs to the read name
@@ -164,7 +182,7 @@ def bc_split(bc_dict, sample_dict, files_dict, min_bc_quality, lane, il_barcode,
                 read2.name = name
                 read = read2
                 read.write_to_fastq_file(fh)
-
+                
                 sample_counter[sample] += 1
             else:
                 bc = read1.seq[bc_strt:bc_end]
@@ -176,6 +194,8 @@ def bc_split(bc_dict, sample_dict, files_dict, min_bc_quality, lane, il_barcode,
                 sample_counter['undetermined'] += 1
         else:
             sample_counter['unqualified'] +=1
+      else:
+        logger.info("skipping file %s", r1_file)
     return sample_counter
 
                 
