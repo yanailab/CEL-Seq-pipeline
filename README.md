@@ -25,6 +25,8 @@ bc_demultiplex
 A CELSeq demultiplexer, to demultiplex the CELSeq barcodes. It also
 saves UMI information with the reads.
 
+Use `bc_demultiplex --help` to understand the input format.
+
 htseq_count_umified
 -------------------
 An adapation of the `htseq_count` script from the `HTSeq` package,
