@@ -15,12 +15,10 @@ import os
 import argparse
 import csv
 from logging import getLogger
-from itertools import izip, tee
+from itertools import izip
 from collections import OrderedDict, namedtuple, Counter
-from multiprocessing.pool import ThreadPool
 
 from HTSeq import FastqReader, SequenceWithQualities
-from Bio import Seq
 
 FN_SCHEME = "{0.project}_{0.series}_sample_{0.id}.fastq"
 FN_UNKNOWN = "undetermined_{0}.fastq"
@@ -210,7 +208,14 @@ if __name__ == "__main__":
     parser.add_argument('bc_index', type=str)
     parser.add_argument('sample_sheet', type=str)
     parser.add_argument('fastq_files', type=str, nargs='+')
+    parser.add_argument('--umi-length', metavar='N', type=int, default=0,
+                        help='Length of UMI (default=0, e.g. no UMI)')
+    parser.add_argument('--bc-length', metavar='N', type=int, default=8,
+                        help='Length of CELSeq barcode (default=8)')
+    parser.add_argument('--cut-length', metavar='N', type=int, default=35,
+                        help='Length of mapped read (default=35)')
     args = parser.parse_args()
     main(args.bc_index, args.sample_sheet, args.fastq_files, stats_file=args.stats_file,
-         output_dir=args.out_dir, min_bc_quality=args.min_bc_quality)
+         output_dir=args.out_dir, min_bc_quality=args.min_bc_quality,
+         umi_length=args.umi_length, bc_length=args.bc_length, cut_length=args.cut_length)
 

@@ -1,0 +1,48 @@
+##  pijpleiding configuration file. Run `pijplieding --help` for more help.
+##
+##  the pipe_run parameter decides whether to run the pipe segment or not.
+##  the pipe_input_files (which can be multilined) is treated as multiple shell
+##  patterns refering to existing files, so it is expanded and split accordingly,
+##  and passed as 'input_files' to the pipe segment. The rest of the parameters
+##  are passed as they are to the pipe segments, so check their description
+
+[scythe_wrapper]
+pipe_run = false
+
+[bc_demultiplex]
+pipe_run = False
+
+bc_index_file= /path_to/barcodes_umis.tab
+sample_sheet= /path_to/Sample_sheet.txt
+pipe_input_files= /path_to/*/*R1*
+output_dir= /path_to/barcode_splitted
+stats_file= stats.tab
+min_bc_quality= 10
+bc_length = 6
+umi_length = 5
+cut_length = 35
+
+[bowtie_wrapper]
+pipe_run = True
+
+pipe_input_files= /path_to/barcode_splitted/CE_*.fastq
+index_file= /path_to/refs/genomes/CE/WS230/c_elegans.WS230_spikein.genomic
+output_dir= /path_to/sam_files
+bowtie_report_name = bt_report_full.tab
+number_of_threads = 3
+extra_params =
+procs = 10
+
+
+[htseq_wrapper]
+pipe_run = True
+
+pipe_input_files = /path_to/sam_files/*sam
+gff_file = /path_to/refs/annotations/CE/WS230/c_elegans.WS230_spikein.annotations_trimmed.spikes_and_lincs.gff3
+output_dir= /path_to/expression_umi
+umi= true
+extra_params = -q
+count_filename = CE_exp.tab
+
+[clean_up]
+pipe_run = False
