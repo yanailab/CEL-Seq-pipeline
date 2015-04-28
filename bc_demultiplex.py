@@ -192,7 +192,7 @@ def bc_split(bc_dict, sample_dict, files_dict, min_bc_quality, lane, il_barcode,
                 sample_counter['undetermined'] += 1
         else:
             sample_counter['unqualified'] +=1
-      else:
+    else:
         logger.info("skipping file %s", r1_file)
     return sample_counter
 
