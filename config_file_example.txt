@@ -14,7 +14,7 @@ pipe_run = False
 
 bc_index_file= /path_to/barcodes_umis.tab
 sample_sheet= /path_to/Sample_sheet.txt
-pipe_input_files= /path_to/*/*R1*
+pipe_input_files= /path_to/*/*R1*.fastq
 output_dir= /path_to/barcode_splitted
 stats_file= stats.tab
 min_bc_quality= 10
