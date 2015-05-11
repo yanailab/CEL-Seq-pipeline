@@ -1,5 +1,11 @@
 #!/usr/bin/python2
-""" HTSeq-count adapted by Jaron et al
+""" HTSeq-count (from htseq-count package) adapted
+
+temporary comments: 
+ as of now the thingie parses the gff de-novo for each different sample; though samples share the same annotation...
+ trying to change that by separating the thingie into two thingies. that is, broke the original function into 2, so
+ in the future calling "prebuild_features_from_gff" will only be done once...
+
 """
 import sys, optparse, itertools, warnings, traceback, os.path, re
 from collections import Counter
@@ -8,12 +14,15 @@ import HTSeq
 
 class UnknownChrom( Exception ):
    pass
-
+   
 class EmptySamError(Exception):
    def __init__(self, sam_filename=''):
       self.sam_filename = sam_filename
    def __str__(self):
       return 'Empty sam file %s' % self.sam_filename
+
+def my_showwarning( message, category, filename, lineno = None, line = None ):
+   sys.stderr.write( "Warning: %s\n" % message )
 
 def invert_strand( iv ):
    iv2 = iv.copy()
@@ -25,9 +34,48 @@ def invert_strand( iv ):
       raise ValueError, "Illegal strand"
    return iv2
 
-def count_reads_in_features( sam_filename, gff_filename, stranded, 
-      overlap_mode, feature_type, id_attribute, quiet, minaqual, samout, umis=False ):
-      
+def prebuild_features_from_gff( gff_filename, stranded, feature_type, id_attribute, quiet ):
+   
+   if quiet:
+      warnings.filterwarnings( action="ignore", module="HTSeq" ) 
+   
+   gff = HTSeq.GFF_Reader( gff_filename )
+   features = HTSeq.GenomicArrayOfSets( "auto", stranded != "no" )     
+   i = 0
+   feature_ids = []
+   try:
+      for f in gff:
+         if f.type == feature_type:
+            try:
+               feature_id = f.attr[ id_attribute ].strip()
+            except KeyError:
+               sys.exit( "Feature %s does not contain a '%s' attribute" % 
+                  ( f.name, id_attribute ) )
+            if stranded != "no" and f.iv.strand == ".":
+               sys.exit( "Feature %s at %s does not have strand information but you are "
+                  "running htseq-count in stranded mode. Use '--stranded=no'." % 
+                  ( f.name, f.iv ) )
+            features[ f.iv ] += feature_id
+            feature_ids.append( feature_id )
+         i += 1
+         if i % 100000 == 0 and not quiet:
+            sys.stderr.write( "%d GFF lines processed.\n" % i )
+   except:
+      sys.stderr.write( "Error occured when processing GFF file (%s):\n" % gff.get_line_number_string() )
+      raise
+   
+   if not quiet:
+      sys.stderr.write( "%d GFF lines processed.\n" % i )
+   
+   if len( feature_ids ) == 0 and not quiet:
+      sys.stderr.write( "Warning: No features of type '%s' found.\n" % feature_type )
+   
+   
+   return (features, feature_ids)
+
+def count_reads_onto_prebuilt_features( sam_filename, features, feature_ids, stranded, 
+      overlap_mode, quiet, minaqual, samout, umis=False ):
+   
    def write_to_samout( r, assignment ):
       if samoutfile is None:
          return
@@ -38,63 +86,32 @@ def count_reads_in_features( sam_filename, gff_filename, stranded,
             samoutfile.write( read.original_sam_line.rstrip() + 
                "\tXF:Z:" + assignment + "\n" )
    
-   #paramaters
    if quiet:
       warnings.filterwarnings( action="ignore", module="HTSeq" ) 
-      
+   
    if samout != "":
       samoutfile = open( samout, "w" )
    else:
       samoutfile = None
-      
-   if umis :
+    
+   if umis:
        umi_re = re.compile(":UMI:(\w+):")
        umi_counts = {}
        def count_umis(fs, read_name):
            umi_seq = umi_re.search(read_name).group(1)
            umi_counts[ fs ][umi_seq] +=1
+       for feature_id in feature_ids: umi_counts[ feature_id ] = Counter()
    else:
        def count_umis(x,y): 
            return None
-
+   
    # Try to open samfile to fail early in case it is not there
    if sam_filename != "-":
       open( sam_filename ).close()
-      
-   #
-   gff = HTSeq.GFF_Reader( gff_filename )
-   features = HTSeq.GenomicArrayOfSets( "auto", stranded != "no" )     
-   i = 0
-   counts = {}
-   try:
-      for f in gff:
-         if f.type == feature_type:
-            try:
-               # added strip to avoid key error
-               feature_id = f.attr[ id_attribute ].strip()
-            except KeyError:
-               sys.exit( "Feature %s does not contain a '%s' attribute" % 
-                  ( f.name, id_attribute ) )
-            if stranded != "no" and f.iv.strand == ".":
-               sys.exit( "Feature %s at %s does not have strand information but you are "
-                  "running htseq-count in stranded mode. Use '--stranded=no'." % 
-                  ( f.name, f.iv ) )
-            features[ f.iv ] += feature_id
-            counts[ feature_id ] = 0
-            if umis: umi_counts[ feature_id ] = Counter()
-         i += 1
-         if i % 100000 == 0 and not quiet:
-            sys.stderr.write( "%d GFF lines processed.\n" % i )
-   except:
-      sys.stderr.write( "Error occured when processing GFF file (%s):\n" % gff.get_line_number_string() )
-      raise
-      
-   if not quiet:
-      sys.stderr.write( "%d GFF lines processed.\n" % i )
-      
-   if len( counts ) == 0 and not quiet:
-      sys.stderr.write( "Warning: No features of type '%s' found.\n" % feature_type )
    
+   counts = {}
+   for feature_id in feature_ids: counts[ feature_id ] = 0
+
    try:
       if sam_filename != "-":
          read_seq_file = HTSeq.SAM_Reader( sam_filename )
@@ -108,6 +125,7 @@ def count_reads_in_features( sam_filename, gff_filename, stranded,
       pe_mode = first_read.paired_end
    except StopIteration:
       raise EmptySamError(sam_filename)
+
 
    try:
       if pe_mode:
@@ -239,6 +257,21 @@ def count_reads_in_features( sam_filename, gff_filename, stranded,
    counts = counts + [empty,ambiguous,lowqual,notaligned,nonunique]
    return (feats, counts)
 
+def count_reads_in_features( sam_filename, gff_filename, stranded, 
+      overlap_mode, feature_type, id_attribute, quiet, minaqual, samout, umis=False ):
+   try:
+      features, feature_ids = prebuild_features_from_gff( gff_filename, stranded, feature_type, id_attribute, quiet )
+      return count_reads_onto_prebuilt_features( sam_filename, features, feature_ids, stranded, 
+             overlap_mode, quiet, minaqual, samout, umis=False )
+   except:
+      sys.stderr.write( "  %s\n" % str( sys.exc_info()[1] ) )
+      sys.stderr.write( "  [Exception type: %s, raised in %s:%d]\n" % 
+         ( sys.exc_info()[1].__class__.__name__, 
+           os.path.basename(traceback.extract_tb( sys.exc_info()[2] )[-1][0]), 
+           traceback.extract_tb( sys.exc_info()[2] )[-1][1] ) )
+      sys.exit( 1 )
+
+
 def main():
    
    optParser = optparse.OptionParser( 
@@ -304,20 +337,19 @@ def main():
       sys.exit( 1 )
       
    warnings.showwarning = my_showwarning
+
    try:
       count_reads_in_features( args[0], args[1], opts.stranded, 
          opts.mode, opts.featuretype, opts.idattr, opts.quiet, opts.minaqual,
          opts.samout, opts.umis)
    except:
       sys.stderr.write( "  %s\n" % str( sys.exc_info()[1] ) )
-      sys.stderr.write( "  [Exception type: %s, raised in %s:%d]\n" % 
-         ( sys.exc_info()[1].__class__.__name__, 
-           os.path.basename(traceback.extract_tb( sys.exc_info()[2] )[-1][0]), 
+      sys.stderr.write( "  [Exception type: %s, raised in %s:%d]\n" %
+         ( sys.exc_info()[1].__class__.__name__,
+           os.path.basename(traceback.extract_tb( sys.exc_info()[2] )[-1][0]),
            traceback.extract_tb( sys.exc_info()[2] )[-1][1] ) )
       sys.exit( 1 )
 
-def my_showwarning( message, category, filename, lineno = None, line = None ):
-   sys.stderr.write( "Warning: %s\n" % message )
 
 if __name__ == "__main__":
    main()

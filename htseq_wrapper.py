@@ -18,6 +18,13 @@ import htseq_count_umified
 
 from multiprocessing import Pool
 
+class parse_gff:
+    def __init__(self, gff_file, features, feature_ids):
+       self.gff_file = gff_file
+       self.features = features
+       self.featids  = feature_ids
+
+
 def build_argument_opts(cmd_line_params):
     """ Parse the input arguments (string) so that it is easily readable by htseq-count
     """
@@ -33,24 +40,45 @@ def build_argument_opts(cmd_line_params):
     parser.add_argument('-o','--samout',dest='samout',default='')
     parser.add_argument('-q','--quiet',dest='quiet',action="store_true",default=False)
     parser.add_argument('-u', '--umis', dest='umis',action="store_true",default=False)
-    #parser.add_argument('-u', '--umis', dest='umis', action="store_true",default='False')
     
     arguments = parser.parse_args(shlex.split(cmd_line_params))
     return arguments
+
+def run_cmd_new(cmd):
+    """  Run the command, and return a feature/count list. 
+         If there was an error, return zeros. 
+         - not yet working -
+    """
+    #global args
+    sam_file = cmd[1]
+    gff_file = cmd[2]
+    args = build_argument_opts(cmd[0])
+
+    logger = getLogger("pijp.htseq")
+    logger.info("ran HTSeq-count: " + sam_file + ', '+ gff.gff_file + ', ' + str(args))
+    try:
+         out = htseq_count_umified.count_reads_onto_prebuilt_features ( sam_file, gff.features, 
+               gff.featids, args.stranded, args.mode, args.quiet, args.minaqual, args.samout, args.umis )
+    except htseq_count_umified.EmptySamError:
+         logger.exception("HTSeq error with command : %s", cmd)
+         out = None
+    return out    
 
 def run_cmd(cmd):
     """  Run the command, and return a feature/count list. 
          If there was an error, return zeros. 
     """
-    logger = getLogger("pijp.htseq")
+    #global args
     sam_file = cmd[1]
     gff_file = cmd[2]
     args = build_argument_opts(cmd[0])
+
+    logger = getLogger("pijp.htseq")
     logger.info("ran HTSeq-count: " + sam_file + ', '+ gff_file + ', ' + str(args))
     try:
-         out = htseq_count_umified.count_reads_in_features( sam_file, gff_file, args.stranded,
+         out = htseq_count_umified.count_reads_in_features( sam_file, gff_file, args.stranded, 
                args.mode, args.featuretype, args.idattr, args.quiet, args.minaqual, 
-               args.samout, args.umis)
+               args.samout, args.umis )
     except htseq_count_umified.EmptySamError:
          logger.exception("HTSeq error with command : %s", cmd)
          out = None
@@ -70,16 +98,26 @@ def main(input_files, gff_file, output_dir, extra_params, count_filename, umi="f
     counts = []
     base_names = []
     cmds = []     
+
+    # prebuild features structure (so as not to repeat for each seperate sam)
+    # not yet implemented
+    #args = build_argument_opts(extra_params)
+    #(features, feature_ids) = htseq_count_umified.prebuild_features_from_gff( gff_file, 
+    #                          args.stranded, args.featuretype, args.idattr, args.quiet )
+    #gff = parse_gff(gff_file, features, feature_ids)
+
     # command arguments for each input SAM file
     for sam_file in input_files:
        base_names += [os.path.splitext(os.path.basename(sam_file))[0]] 
-        #  we need base_names for heading the matrix file.
-       htseq_cmd =  [extra_params, sam_file, gff_file]
+       #  we need base_names for heading the matrix file.
+       htseq_cmd = [extra_params, sam_file, gff_file]
        cmds.append(htseq_cmd)
      
     # running htseq-count on multiple processes
     pool = Pool(procs)
     results = pool.map(run_cmd, cmds)
+    pool.close()
+    pool.join()
     for res in results:
         if res is None:
             # HTSeq failed (perhaps empty file), so we put a column of zeros.
