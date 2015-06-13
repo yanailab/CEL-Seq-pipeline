@@ -43,7 +43,7 @@ def main(bc_index_file, sample_sheet, input_files, stats_file, output_dir, min_b
             lane = raw_fastq_dict["lane"]
             flocell = raw_fastq_dict["flocell"]
             # run the splitter on this file, and collect the counts
-            sample_counter += bc_split(bc_dict, sample_dict, files_dict, min_bc_quality, lane, il_barcode, flocell, fastq_file, int(umi_length), int(bc_length), cut_length)
+            sample_counter += bc_split(bc_dict, sample_dict.copy(), files_dict, min_bc_quality, lane, il_barcode, flocell, fastq_file, int(umi_length), int(bc_length), cut_length)
     
         ### Create the stats file.
         total = sum(sample_counter.values())
