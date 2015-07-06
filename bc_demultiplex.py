@@ -26,7 +26,7 @@ FN_UNKNOWN = "undetermined_{0}.fastq"
 logger = getLogger('pijp.bc_demultiplex')
 debug, info = logger.debug, logger.info
 
-def main(bc_index_file, sample_sheet, input_files, stats_file, output_dir, min_bc_quality, umi_length=0, bc_length=8, cut_length=35):
+def main(bc_index_file, sample_sheet, input_files, stats_file, output_dir, min_bc_quality, umi_length=0, bc_length=8, cut_length=35, fname_delimiter='_', lane_field=2, index_field=0, strand_field=3):
     """ this is the main function of this module. Does the splitting 
         and calls any other function.
     """
@@ -34,7 +34,7 @@ def main(bc_index_file, sample_sheet, input_files, stats_file, output_dir, min_b
     bc_dict = create_bc_dict(bc_index_file)
     sample_dict = create_sample_dict(sample_sheet)
     files_dict = create_output_files(sample_dict, output_dir)
-    fastq_dict = create_fastq_dict(input_files)
+    fastq_dict = create_fastq_dict(input_files, fname_delimiter, int(lane_field), int(index_field), int(strand_field))
 
     try:
         sample_counter = Counter()
@@ -102,20 +102,17 @@ def create_bc_dict(bc_index_file):
             bc_dict[row[1]] = row[0]
     return bc_dict
 
-def create_fastq_dict(input_files):
+def create_fastq_dict(input_files, fname_delimiter, lane_field, index_field, strand_field):
     ''' create list of fastqs and their mapping attributes '''
     fastq_dict = OrderedDict()
     for fastq_file in input_files:
         with open(fastq_file, 'r') as f:
             first_line = f.readline()
-        split_name = os.path.basename(fastq_file).split("_")
+        split_name = os.path.basename(fastq_file).split(fname_delimiter)
         
-        Key = namedtuple('fastq_key',['flocell', 'lane', 'il_barcode', 'barcode', 'strand', 'file'])
-        fastq_dict[fastq_file] = Key(first_line.split(":")[2], split_name[2], split_name[0], split_name[1], split_name[3], fastq_file)
-        
-        assert ("index" in fastq_dict[fastq_file].il_barcode.lower()), "File name may not contain an index. Aborting (%r)" % fastq_file
-        assert ("l" in fastq_dict[fastq_file].lane.lower()), "File name may not contain a lane. Aborting (%r)" % fastq_file
-        assert ("_R1" in fastq_dict[fastq_file].file), "File name does not contain R1. Aborting (%r)" % fastq_file
+        Key = namedtuple('fastq_key',['flocell', 'lane', 'il_barcode', 'strand', 'file'])
+        fastq_dict[fastq_file] = Key(first_line.split(":")[2], split_name[lane_field], split_name[index_field], split_name[strand_field], fastq_file)
+        assert ("R1" in fastq_dict[fastq_file].strand), "File name does not contain R1 in field %d. Aborting (%r not R1)" %(strand_field, fastq_dict[fastq_file].strand)
         r2_file = fastq_file.replace("_R1", "_R2")
         assert (os.path.isfile(r2_file)), "Could not find R2 (%r)" % r2_file
     return fastq_dict
