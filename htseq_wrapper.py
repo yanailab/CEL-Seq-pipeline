@@ -72,7 +72,6 @@ def run_cmd(cmd):
     sam_file = cmd[1]
     gff_file = cmd[2]
     args = build_argument_opts(cmd[0])
-
     logger = getLogger("pijp.htseq")
     logger.info("ran HTSeq-count: " + sam_file + ', '+ gff_file + ', ' + str(args))
     try:

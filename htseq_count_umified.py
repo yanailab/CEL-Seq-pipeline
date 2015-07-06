@@ -75,7 +75,7 @@ def prebuild_features_from_gff( gff_filename, stranded, feature_type, id_attribu
 
 def count_reads_onto_prebuilt_features( sam_filename, features, feature_ids, stranded, 
       overlap_mode, quiet, minaqual, samout, umis=False ):
-   
+  
    def write_to_samout( r, assignment ):
       if samoutfile is None:
          return
@@ -107,7 +107,7 @@ def count_reads_onto_prebuilt_features( sam_filename, features, feature_ids, str
    
    # Try to open samfile to fail early in case it is not there
    if sam_filename != "-":
-      open( sam_filename ).close()
+       open( sam_filename ).close()
    
    counts = {}
    for feature_id in feature_ids: counts[ feature_id ] = 0
@@ -262,7 +262,7 @@ def count_reads_in_features( sam_filename, gff_filename, stranded,
    try:
       features, feature_ids = prebuild_features_from_gff( gff_filename, stranded, feature_type, id_attribute, quiet )
       return count_reads_onto_prebuilt_features( sam_filename, features, feature_ids, stranded, 
-             overlap_mode, quiet, minaqual, samout, umis=False )
+             overlap_mode, quiet, minaqual, samout, umis )
    except:
       sys.stderr.write( "  %s\n" % str( sys.exc_info()[1] ) )
       sys.stderr.write( "  [Exception type: %s, raised in %s:%d]\n" % 
