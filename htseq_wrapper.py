@@ -13,6 +13,7 @@ import sys
 import csv
 from itertools import cycle
 import argparse
+import json
 
 import htseq_count_umified
 
@@ -95,6 +96,7 @@ def main(input_files, gff_file, output_dir, extra_params, count_filename, umi="f
     # So we put None, and try to write it on our first chance.
     feats = None
     counts = []
+    full_counts = []
     base_names = []
     cmds = []     
 
@@ -122,11 +124,13 @@ def main(input_files, gff_file, output_dir, extra_params, count_filename, umi="f
             # HTSeq failed (perhaps empty file), so we put a column of zeros.
             counts.append(cycle(["0"]))
         else:
-            (feats_in, counts_in) = res
+            (feats_in, counts_in, full_counts_in) = res
             if feats is None:
                 feats = feats_in
             counts.append(counts_in)
-    
+            if full_counts_in is not None:
+                full_counts.append(full_counts_in)
+
     # make a htseq-count matrix of results for output
     matrix_header = ["#Sample:"] + base_names
     if feats is None:
@@ -138,3 +142,8 @@ def main(input_files, gff_file, output_dir, extra_params, count_filename, umi="f
         matwriter.writerow(matrix_header)
         matwriter.writerows(matrix)
         
+    if len(full_counts) > 0:
+        (cf, cfext) = os.path.splitext(count_filename)
+        full_filename = cf + "_full" + cfext
+        with open(os.path.join(output_dir, full_filename), "w") as fh:
+            json.dump(full_counts, fh)

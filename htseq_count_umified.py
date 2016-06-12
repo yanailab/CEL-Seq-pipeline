@@ -250,12 +250,15 @@ def count_reads_onto_prebuilt_features( sam_filename, features, feature_ids, str
    feats  = [ fn for fn in sorted(counts.keys()) ]
    if umis:
        counts = [ len(umi_counts[fn]) for fn in feats ]
+       # the new output option of full_count.
+       full_counts = [sorted(umi_counts[fn].values())[::-1] for fn in feats]
    else:
        counts = [ counts[fn] for fn in feats ]
+       full_counts = None
    #cat statistics summary to feature+count list
    feats = feats + ['no_feature','ambiguous','too_low_aQual','not_aligned','alignment_not_unique']
    counts = counts + [empty,ambiguous,lowqual,notaligned,nonunique]
-   return (feats, counts)
+   return (feats, counts, full_counts)
 
 def count_reads_in_features( sam_filename, gff_filename, stranded, 
       overlap_mode, feature_type, id_attribute, quiet, minaqual, samout, umis=False ):
